@@ -1,4 +1,10 @@
-import { Innertube, UniversalCache } from 'youtubei.js'
+// Güvenilir Invidious instance'ları (sırayla dener)
+const INVIDIOUS = [
+  'https://inv.nadeko.net',
+  'https://invidious.privacydev.net',
+  'https://yt.cdaut.de',
+  'https://invidious.nerdvpn.de',
+]
 
 function videoIdCikar(url) {
   try {
@@ -8,8 +14,25 @@ function videoIdCikar(url) {
   } catch { return null }
 }
 
+async function formatGetir(videoId) {
+  for (const base of INVIDIOUS) {
+    try {
+      const res = await fetch(
+        `${base}/api/v1/videos/${videoId}?fields=title,formatStreams`,
+        { signal: AbortSignal.timeout(6000) }
+      )
+      if (!res.ok) continue
+      const data = await res.json()
+      if (data.formatStreams?.length) return data
+    } catch {
+      continue // bir sonraki instance'ı dene
+    }
+  }
+  return null
+}
+
 export default async function handler(req, res) {
-  const { url, poToken, visitorData } = req.query
+  const { url } = req.query
 
   if (!url) return res.status(400).json({ hata: 'URL eksik.' })
 
@@ -17,48 +40,23 @@ export default async function handler(req, res) {
   if (!videoId || videoId.length !== 11)
     return res.status(400).json({ hata: 'Geçersiz YouTube URL.' })
 
-  try {
-    const ytConfig = { generate_session_locally: true }
+  const data = await formatGetir(videoId)
 
-    // Client'tan PO token geldiyse kullan
-    if (poToken && visitorData) {
-      ytConfig.po_token = poToken
-      ytConfig.visitor_data = visitorData
-    }
-
-    const yt = await Innertube.create(ytConfig)
-    const bilgi = await yt.getInfo(videoId)
-    const baslik = (bilgi.basic_info.title ?? videoId).replace(/[^\w\s]/gi, '').trim()
-
-    const tumFormatlar = [
-      ...(bilgi.streaming_data?.formats ?? []),
-      ...(bilgi.streaming_data?.adaptive_formats ?? []),
-    ]
-
-    if (tumFormatlar.length === 0) {
-      return res.status(404).json({
-        hata: 'Format bulunamadı. PO Token gerekiyor olabilir.',
-        poTokenGerekli: true,
-      })
-    }
-
-    const format = tumFormatlar
-      .filter((f) => f.has_audio && f.has_video && f.mime_type?.includes('video/mp4'))
-      .sort((a, b) => (b.height ?? 0) - (a.height ?? 0))[0]
-      ?? tumFormatlar
-        .filter((f) => f.has_video && f.mime_type?.includes('video/mp4'))
-        .sort((a, b) => (b.height ?? 0) - (a.height ?? 0))[0]
-
-    if (!format) return res.status(404).json({ hata: 'MP4 format yok.' })
-
-    const videoUrl = format.url ?? format.decipher(yt.session.player)
-    if (!videoUrl) return res.status(500).json({ hata: 'URL çözümlenemedi.' })
-
-    res.setHeader('Content-Disposition', `attachment; filename="${baslik}.mp4"`)
-    return res.redirect(302, videoUrl)
-
-  } catch (err) {
-    console.error('[yt-indir]', err.message)
-    return res.status(500).json({ hata: err.message })
+  if (!data) {
+    return res.status(503).json({ hata: 'Tüm kaynaklar yanıt vermedi, tekrar dene.' })
   }
+
+  const baslik = (data.title ?? videoId).replace(/[^\w\s]/gi, '').trim()
+
+  // formatStreams → ses+video birleşik, mp4 tercih et
+  const format =
+    data.formatStreams.find((f) => f.container === 'mp4') ??
+    data.formatStreams[0]
+
+  if (!format?.url) {
+    return res.status(404).json({ hata: 'İndirilebilir format bulunamadı.' })
+  }
+
+  res.setHeader('Content-Disposition', `attachment; filename="${baslik}.mp4"`)
+  return res.redirect(302, format.url)
 }
