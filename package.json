@@ -1,5 +1,10 @@
 {
   "name": "yt-downloader",
   "version": "1.0.0",
-  "type": "module"
+  "type": "module",
+  "scripts": { "start": "node src/server.js" },
+  "dependencies": {
+    "hono": "^4.7.10",
+    "@hono/node-server": "^1.14.3"
+  }
 }

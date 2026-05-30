@@ -4,8 +4,6 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>YT İndirici</title>
-  <!-- BotGuard/PO Token üretici -->
-  <script src="https://cdn.jsdelivr.net/npm/bgutils-js@3/dist/bgutils.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -20,13 +18,13 @@
     .kart {
       background: #1a1a1a;
       border: 1px solid #2a2a2a;
-      border-radius: 12px;
+      border-radius: 16px;
       padding: 2rem;
       width: 100%;
-      max-width: 480px;
+      max-width: 500px;
     }
     h1 { font-size: 1.4rem; margin-bottom: 1.5rem; color: #ff4444; }
-    input {
+    input, select {
       width: 100%;
       padding: 0.75rem 1rem;
       border-radius: 8px;
@@ -34,7 +32,7 @@
       background: #111;
       color: #fff;
       font-size: 0.95rem;
-      margin-bottom: 1rem;
+      margin-bottom: 0.75rem;
     }
     button {
       width: 100%;
@@ -45,65 +43,93 @@
       border-radius: 8px;
       font-size: 1rem;
       cursor: pointer;
+      transition: background 0.2s;
     }
-    button:disabled { background: #555; cursor: not-allowed; }
-    #durum { margin-top: 1rem; font-size: 0.9rem; color: #aaa; text-align: center; min-height: 1.2em; }
+    button:hover { background: #cc2222; }
+    button:disabled { background: #444; cursor: not-allowed; }
+    #onizleme {
+      display: none;
+      margin-top: 1.25rem;
+      background: #111;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    #onizleme img { width: 100%; display: block; }
+    #onizleme .bilgi { padding: 0.75rem 1rem; }
+    #onizleme .baslik { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.25rem; }
+    #onizleme .sure { font-size: 0.8rem; color: #888; }
+    #durum { margin-top: 1rem; font-size: 0.85rem; color: #aaa; text-align: center; min-height: 1.2em; }
   </style>
 </head>
 <body>
 <div class="kart">
   <h1>▶ YouTube MP4 İndirici</h1>
   <input id="urlInput" type="text" placeholder="https://youtu.be/..."/>
+  <select id="kalite">
+    <option value="2160">4K (2160p)</option>
+    <option value="1080">1080p</option>
+    <option value="720" selected>720p</option>
+    <option value="480">480p</option>
+    <option value="360">360p</option>
+  </select>
   <button id="btn" onclick="indir()">İndir</button>
+
+  <div id="onizleme">
+    <img id="thumbnail" src="" alt=""/>
+    <div class="bilgi">
+      <div id="baslik" class="baslik"></div>
+      <div id="sure" class="sure"></div>
+    </div>
+  </div>
+
   <div id="durum"></div>
 </div>
 
 <script>
-  async function poTokenUret() {
-    try {
-      // YouTube'dan visitor_data al
-      const res = await fetch('https://www.youtube.com/sw.js_data')
-      const text = await res.text()
-      const match = text.match(/"visitorData":"([^"]+)"/)
-      const visitorData = match?.[1]
-      if (!visitorData) return {}
+  const $ = id => document.getElementById(id)
 
-      // BotGuard ile PO Token üret
-      const bg = await BG.BotGuardClient.create({
-        program: await fetch('https://www.youtube.com/iframe_api')
-          .then(r => r.text()),
-        globalName: 'botguard',
-      })
-      const poToken = await bg.snapshot()
-      return { poToken, visitorData }
-    } catch {
-      return {}
-    }
+  function sureFormat(sn) {
+    const d = Math.floor(sn / 60)
+    const s = sn % 60
+    return `${d}:${String(s).padStart(2, '0')}`
   }
 
   async function indir() {
-    const url = document.getElementById('urlInput').value.trim()
-    const btn = document.getElementById('btn')
-    const durum = document.getElementById('durum')
+    const url = $('urlInput').value.trim()
+    const kalite = $('kalite').value
     if (!url) return
 
-    btn.disabled = true
-    durum.textContent = 'Token üretiliyor...'
+    $('btn').disabled = true
+    $('durum').textContent = 'Video bilgisi alınıyor...'
+    $('onizleme').style.display = 'none'
 
-    const { poToken, visitorData } = await poTokenUret()
+    try {
+      const res = await fetch(`/api/info?url=${encodeURIComponent(url)}`)
+      const data = await res.json()
 
-    durum.textContent = 'İndirme başlatılıyor...'
+      if (data.hata) {
+        $('durum').textContent = `Hata: ${data.hata}`
+        return
+      }
 
-    const params = new URLSearchParams({ url })
-    if (poToken) params.set('poToken', poToken)
-    if (visitorData) params.set('visitorData', visitorData)
+      // Önizleme
+      $('thumbnail').src = data.thumbnail
+      $('baslik').textContent = data.baslik
+      $('sure').textContent = sureFormat(data.sure)
+      $('onizleme').style.display = 'block'
 
-    window.location.href = `/api/download?${params}`
+      $('durum').textContent = 'İndirme başlatılıyor...'
+      window.location.href = `/api/download?url=${encodeURIComponent(url)}&kalite=${kalite}`
 
-    setTimeout(() => {
-      durum.textContent = 'İndirme başlatıldı ✓'
-      btn.disabled = false
-    }, 2000)
+      setTimeout(() => {
+        $('durum').textContent = 'İndirme başlatıldı ✓'
+        $('btn').disabled = false
+      }, 2000)
+
+    } catch (err) {
+      $('durum').textContent = `Hata: ${err.message}`
+      $('btn').disabled = false
+    }
   }
 </script>
 </body>
