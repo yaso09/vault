@@ -1,0 +1,8 @@
+{
+  "name": "yt-downloader",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@distube/ytdl-core": "^4.16.4"
+  }
+}
