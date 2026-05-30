@@ -43,9 +43,7 @@
       border-radius: 8px;
       font-size: 1rem;
       cursor: pointer;
-      transition: background 0.2s;
     }
-    button:hover { background: #cc2222; }
     button:disabled { background: #444; cursor: not-allowed; }
     #onizleme {
       display: none;
@@ -55,10 +53,10 @@
       overflow: hidden;
     }
     #onizleme img { width: 100%; display: block; }
-    #onizleme .bilgi { padding: 0.75rem 1rem; }
-    #onizleme .baslik { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.25rem; }
-    #onizleme .sure { font-size: 0.8rem; color: #888; }
-    #durum { margin-top: 1rem; font-size: 0.85rem; color: #aaa; text-align: center; min-height: 1.2em; }
+    .bilgi { padding: 0.75rem 1rem; }
+    .baslik { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.25rem; }
+    .sure { font-size: 0.8rem; color: #888; }
+    #durum { margin-top: 1rem; font-size: 0.85rem; color: #aaa; text-align: center; }
   </style>
 </head>
 <body>
@@ -66,22 +64,19 @@
   <h1>▶ YouTube MP4 İndirici</h1>
   <input id="urlInput" type="text" placeholder="https://youtu.be/..."/>
   <select id="kalite">
-    <option value="2160">4K (2160p)</option>
     <option value="1080">1080p</option>
     <option value="720" selected>720p</option>
     <option value="480">480p</option>
     <option value="360">360p</option>
   </select>
   <button id="btn" onclick="indir()">İndir</button>
-
   <div id="onizleme">
-    <img id="thumbnail" src="" alt=""/>
+    <img id="thumb" src="" alt=""/>
     <div class="bilgi">
       <div id="baslik" class="baslik"></div>
       <div id="sure" class="sure"></div>
     </div>
   </div>
-
   <div id="durum"></div>
 </div>
 
@@ -89,8 +84,7 @@
   const $ = id => document.getElementById(id)
 
   function sureFormat(sn) {
-    const d = Math.floor(sn / 60)
-    const s = sn % 60
+    const d = Math.floor(sn / 60), s = sn % 60
     return `${d}:${String(s).padStart(2, '0')}`
   }
 
@@ -100,7 +94,7 @@
     if (!url) return
 
     $('btn').disabled = true
-    $('durum').textContent = 'Video bilgisi alınıyor...'
+    $('durum').textContent = 'Bilgi alınıyor...'
     $('onizleme').style.display = 'none'
 
     try {
@@ -109,17 +103,18 @@
 
       if (data.hata) {
         $('durum').textContent = `Hata: ${data.hata}`
+        $('btn').disabled = false
         return
       }
 
-      // Önizleme
-      $('thumbnail').src = data.thumbnail
+      $('thumb').src = data.thumbnail
       $('baslik').textContent = data.baslik
       $('sure').textContent = sureFormat(data.sure)
       $('onizleme').style.display = 'block'
-
       $('durum').textContent = 'İndirme başlatılıyor...'
-      window.location.href = `/api/download?url=${encodeURIComponent(url)}&kalite=${kalite}`
+
+      window.location.href =
+        `/api/download?url=${encodeURIComponent(url)}&kalite=${kalite}`
 
       setTimeout(() => {
         $('durum').textContent = 'İndirme başlatıldı ✓'
