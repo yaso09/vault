@@ -1,5 +1,16 @@
 import { Innertube } from 'youtubei.js'
 
+// URL'den video ID çıkar (tüm YouTube formatlarını destekler)
+function videoIdCikar(url) {
+  try {
+    const u = new URL(url)
+    if (u.hostname === 'youtu.be') return u.pathname.slice(1).split('?')[0]
+    return u.searchParams.get('v')
+  } catch {
+    return null
+  }
+}
+
 export default async function handler(req, res) {
   const { url } = req.query
 
@@ -7,37 +18,58 @@ export default async function handler(req, res) {
     return res.status(400).json({ hata: 'URL parametresi eksik.' })
   }
 
-  // Video ID'yi URL'den çıkar
-  const match = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)
-  if (!match) {
+  const videoId = videoIdCikar(url)
+  if (!videoId || videoId.length !== 11) {
     return res.status(400).json({ hata: 'Geçerli bir YouTube URL\'i giriniz.' })
   }
 
-  const videoId = match[1]
-
   try {
-    const yt = await Innertube.create({ retrieve_player: true })
-    const bilgi = await yt.getBasicInfo(videoId)
+    const yt = await Innertube.create()
 
-    const baslik = bilgi.basic_info.title?.replace(/[^\w\s]/gi, '').trim() ?? videoId
+    // getBasicInfo yerine getInfo → tam streaming_data döner
+    const bilgi = await yt.getInfo(videoId)
+    const baslik = (bilgi.basic_info.title ?? videoId).replace(/[^\w\s]/gi, '').trim()
 
-    // Ses + video birleşik MP4 formatlarını filtrele
-    const formatlar = bilgi.streaming_data?.formats ?? []
-    const mp4Formatlar = formatlar
-      .filter((f) => f.mime_type?.startsWith('video/mp4'))
-      .sort((a, b) => (b.height ?? 0) - (a.height ?? 0))
+    const tumFormatlar = [
+      ...(bilgi.streaming_data?.formats ?? []),
+      ...(bilgi.streaming_data?.adaptive_formats ?? []),
+    ]
 
-    if (mp4Formatlar.length === 0) {
-      return res.status(404).json({ hata: 'Uygun MP4 formatı bulunamadı.' })
+    if (tumFormatlar.length === 0) {
+      return res.status(404).json({ hata: 'Hiç format bulunamadı.', videoId })
     }
 
-    const format = mp4Formatlar[0]
-    const videoUrl = format.decipher(yt.session.player)
+    // Önce ses+video birleşik MP4, yoksa en iyi video adaptive MP4
+    const birlesik = tumFormatlar
+      .filter((f) => f.has_audio && f.has_video && f.mime_type?.includes('video/mp4'))
+      .sort((a, b) => (b.height ?? 0) - (a.height ?? 0))
+
+    const format = birlesik[0] ?? tumFormatlar
+      .filter((f) => f.has_video && f.mime_type?.includes('video/mp4'))
+      .sort((a, b) => (b.height ?? 0) - (a.height ?? 0))[0]
+
+    if (!format) {
+      return res.status(404).json({ hata: 'MP4 format bulunamadı.' })
+    }
+
+    // URL çözümleme: önce hazır URL, yoksa decipher
+    let videoUrl = format.url
+    if (!videoUrl && yt.session.player) {
+      videoUrl = format.decipher(yt.session.player)
+    }
+
+    if (!videoUrl) {
+      return res.status(500).json({ hata: 'Video URL\'i çözümlenemedi.' })
+    }
 
     res.setHeader('Content-Disposition', `attachment; filename="${baslik}.mp4"`)
     return res.redirect(302, videoUrl)
 
   } catch (err) {
-    return res.status(500).json({ hata: 'Video işlenemedi.', detay: err.message })
+    console.error('[yt-indir]', err)
+    return res.status(500).json({
+      hata: 'Video işlenemedi.',
+      detay: err.message,
+    })
   }
 }
