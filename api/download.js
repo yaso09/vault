@@ -1,4 +1,4 @@
-import { getYT, videoIdCikar } from '../lib/youtube.js'
+import { getYT, videoIdCikar, formatUrlCoz } from '../lib/youtube.js'
 
 export default async function handler(req, res) {
   const { url, kalite = '720' } = req.query
@@ -29,7 +29,7 @@ export default async function handler(req, res) {
 
     if (!format) return res.status(404).json({ hata: 'Format bulunamadı.' })
 
-    const videoUrl = format.url ?? format.decipher(yt.session.player)
+    const videoUrl = formatUrlCoz(format, yt.session.player)
     if (!videoUrl) return res.status(500).json({ hata: 'URL çözümlenemedi.' })
 
     res.setHeader('Content-Disposition', 'attachment; filename="video.mp4"')
