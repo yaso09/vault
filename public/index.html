@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>YT İndirici</title>
+  <!-- BotGuard/PO Token üretici -->
+  <script src="https://cdn.jsdelivr.net/npm/bgutils-js@3/dist/bgutils.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -43,52 +45,66 @@
       border-radius: 8px;
       font-size: 1rem;
       cursor: pointer;
-      transition: background 0.2s;
     }
-    button:hover { background: #cc2222; }
     button:disabled { background: #555; cursor: not-allowed; }
-    #durum { margin-top: 1rem; font-size: 0.9rem; color: #aaa; text-align: center; }
+    #durum { margin-top: 1rem; font-size: 0.9rem; color: #aaa; text-align: center; min-height: 1.2em; }
   </style>
 </head>
 <body>
-  <div class="kart">
-    <h1>▶ YouTube MP4 İndirici</h1>
-    <input id="url" type="text" placeholder="https://www.youtube.com/watch?v=..." />
-    <button id="btn" onclick="indir()">İndir</button>
-    <div id="durum"></div>
-  </div>
+<div class="kart">
+  <h1>▶ YouTube MP4 İndirici</h1>
+  <input id="urlInput" type="text" placeholder="https://youtu.be/..."/>
+  <button id="btn" onclick="indir()">İndir</button>
+  <div id="durum"></div>
+</div>
 
-  <script>
-    async function indir() {
-      const url = document.getElementById('url').value.trim()
-      const btn = document.getElementById('btn')
-      const durum = document.getElementById('durum')
+<script>
+  async function poTokenUret() {
+    try {
+      // YouTube'dan visitor_data al
+      const res = await fetch('https://www.youtube.com/sw.js_data')
+      const text = await res.text()
+      const match = text.match(/"visitorData":"([^"]+)"/)
+      const visitorData = match?.[1]
+      if (!visitorData) return {}
 
-      if (!url) return
-
-      btn.disabled = true
-      durum.textContent = 'İşleniyor...'
-
-      try {
-        // Redirect'i takip etmeden önce kontrol et
-        const res = await fetch(`/api/download?url=${encodeURIComponent(url)}`, {
-          redirect: 'manual'
-        })
-
-        if (res.type === 'opaqueredirect' || res.status === 302) {
-          // Tarayıcıya normal indirme linki olarak yönlendir
-          window.location.href = `/api/download?url=${encodeURIComponent(url)}`
-          durum.textContent = 'İndirme başlatıldı ✓'
-        } else {
-          const veri = await res.json()
-          durum.textContent = `Hata: ${veri.hata}`
-        }
-      } catch {
-        durum.textContent = 'Bir hata oluştu.'
-      } finally {
-        btn.disabled = false
-      }
+      // BotGuard ile PO Token üret
+      const bg = await BG.BotGuardClient.create({
+        program: await fetch('https://www.youtube.com/iframe_api')
+          .then(r => r.text()),
+        globalName: 'botguard',
+      })
+      const poToken = await bg.snapshot()
+      return { poToken, visitorData }
+    } catch {
+      return {}
     }
-  </script>
+  }
+
+  async function indir() {
+    const url = document.getElementById('urlInput').value.trim()
+    const btn = document.getElementById('btn')
+    const durum = document.getElementById('durum')
+    if (!url) return
+
+    btn.disabled = true
+    durum.textContent = 'Token üretiliyor...'
+
+    const { poToken, visitorData } = await poTokenUret()
+
+    durum.textContent = 'İndirme başlatılıyor...'
+
+    const params = new URLSearchParams({ url })
+    if (poToken) params.set('poToken', poToken)
+    if (visitorData) params.set('visitorData', visitorData)
+
+    window.location.href = `/api/download?${params}`
+
+    setTimeout(() => {
+      durum.textContent = 'İndirme başlatıldı ✓'
+      btn.disabled = false
+    }, 2000)
+  }
+</script>
 </body>
 </html>
