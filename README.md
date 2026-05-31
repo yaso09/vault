@@ -105,7 +105,7 @@ uv sync
 ### 4. Uygulamayı başlatın
 
 ```bash
-uv run python main.py
+uv run flet run
 ```
 
 ---
@@ -115,7 +115,7 @@ uv run python main.py
 ### Masaüstü (Windows)
 
 ```bash
-uv run python main.py
+uv run flet run
 ```
 
 Uygulama 440 × 840 piksel sabit boyutlu bir pencerede açılır.
@@ -125,7 +125,7 @@ Uygulama 440 × 840 piksel sabit boyutlu bir pencerede açılır.
 Flet CLI ile APK derleyip cihaza yükleyebilirsiniz:
 
 ```bash
-flet build apk
+uv run flet build apk
 ```
 
 Derleme talimatları için: [https://flet.dev/docs/publish/android](https://flet.dev/docs/publish/android)
