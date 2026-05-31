@@ -1,2 +1,4 @@
-node_modules
-.vercel
+.venv
+build
+__pycache__
+*/__pycache__

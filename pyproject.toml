@@ -1,0 +1,26 @@
+[project]
+name = "vault"
+version = "0.1.0"
+description = "Video Archive App"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "flet>=0.85.2",
+    "flet-video>=0.85.2",
+    "yt-dlp>=2026.3.17",
+]
+
+# ── Flet Build Konfigürasyonu ────────────────────────────────────
+# Bu bölüm `flet build android` komutunun varsayılanlarını tanımlar.
+# Org + product birleşimi Android'deki paket adını oluşturur:
+#   com.yasireymen.vault
+[tool.flet]
+org = "com.yasireymen"
+product = "Vault"
+description = "Video archive app"
+
+[tool.flet.android]
+# Yalnızca INTERNET gerekli; app-özel dizine yazarken ek izin gerekmez.
+permissions = [
+    "android.permission.INTERNET",
+]
