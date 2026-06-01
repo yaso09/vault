@@ -631,6 +631,13 @@ async def main(page: ft.Page):
         page.update()
 
     # ── KÜTÜPHANE KARTLARI BİLEŞENİ ───────────────────────────────────
+    def set_mobile_nav_visible(visible: bool):
+        if _mobile and page.navigation_bar is not None:
+            page.navigation_bar.visible = visible
+
+    def on_player_fullscreen_change(is_fullscreen: bool):
+        set_mobile_nav_visible(not is_fullscreen)
+
     def play_downloaded_video(filepath: str):
         """Uygulama içi özel video oynatıcıyı açar."""
         player_overlay.visible = True
@@ -638,11 +645,14 @@ async def main(page: ft.Page):
             page=page,
             filepath=filepath,
             download_path=download_path,
-            on_close=close_video_player
+            on_close=close_video_player,
+            is_mobile=_mobile,
+            on_fullscreen_change=on_player_fullscreen_change if _mobile else None,
         )
         page.update()
 
     def close_video_player():
+        set_mobile_nav_visible(True)
         player_overlay.visible = False
         player_overlay.content = ft.Container()
         page.update()  # Video widget'ını DOM'dan kaldır, sonra kütüphaneyi yenile

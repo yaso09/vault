@@ -77,12 +77,23 @@ def _icon_btn(icon, on_click, *, size=24, tooltip=None, color=TEXT_PRI):
 class CustomVideoPlayer(ft.Container):
     """Video oynatıcı — UI güncellemeleri yalnızca Flet ana döngüsünde, hafif patch ile."""
 
-    def __init__(self, page: ft.Page, filepath: str, download_path: str, on_close):
+    def __init__(
+        self,
+        page: ft.Page,
+        filepath: str,
+        download_path: str,
+        on_close,
+        *,
+        is_mobile: bool = False,
+        on_fullscreen_change=None,
+    ):
         super().__init__()
         self.custom_page = page
         self.filepath = filepath
         self.download_path = download_path
         self.on_close_callback = on_close
+        self._mobile = is_mobile
+        self._on_fullscreen_change = on_fullscreen_change
 
         self.filename = os.path.basename(filepath)
         self.display_name = self.filename
@@ -152,6 +163,7 @@ class CustomVideoPlayer(ft.Container):
         )
 
         self.volume_icon = _icon_btn(ft.Icons.VOLUME_UP_ROUNDED, self.toggle_mute, size=22)
+        vol_w = 56 if self._mobile else 88
         self.volume_slider = ft.Slider(
             min=0,
             max=100,
@@ -159,7 +171,7 @@ class CustomVideoPlayer(ft.Container):
             active_color=TEXT_PRI,
             inactive_color=PROGRESS_BG,
             on_change=self.on_volume_change,
-            width=88,
+            width=vol_w,
         )
 
         self.speed_label = ft.Text("1×", size=12, color=TEXT_PRI, weight=ft.FontWeight.W_600)
@@ -197,27 +209,7 @@ class CustomVideoPlayer(ft.Container):
             spacing=6,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
-        transport_row = ft.Row(
-            [
-                ft.Row(
-                    [self.volume_icon, self.volume_slider],
-                    spacing=0,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                ),
-                ft.Row(
-                    [self.rewind_btn, self.play_pause_btn, self.forward_btn],
-                    spacing=4,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                ),
-                ft.Row(
-                    [self.speed_btn, self.fullscreen_btn],
-                    spacing=4,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                ),
-            ],
-            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        )
+        transport_row = self._build_transport_row()
 
         self.controls_panel = ft.Container(
             content=ft.Column(
@@ -267,12 +259,57 @@ class CustomVideoPlayer(ft.Container):
             spacing=0,
             expand=True,
         )
+        shell_pad = 6 if self._mobile else 12
         self._player_shell = ft.Container(
             content=self._player_column,
-            padding=ft.Padding.symmetric(horizontal=12, vertical=12),
+            padding=ft.Padding.symmetric(horizontal=shell_pad, vertical=shell_pad),
             expand=True,
         )
         self.content = self._player_shell
+
+    def _build_transport_row(self):
+        center = ft.Row(
+            [self.rewind_btn, self.play_pause_btn, self.forward_btn],
+            spacing=2 if self._mobile else 4,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+        if self._mobile:
+            return ft.Row(
+                [
+                    self.volume_icon,
+                    self.volume_slider,
+                    center,
+                    self.speed_btn,
+                    self.fullscreen_btn,
+                ],
+                scroll=ft.ScrollMode.AUTO,
+                spacing=2,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            )
+        return ft.Row(
+            [
+                ft.Row(
+                    [self.volume_icon, self.volume_slider],
+                    spacing=0,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                center,
+                ft.Row(
+                    [self.speed_btn, self.fullscreen_btn],
+                    spacing=4,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+            ],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+
+    def _notify_fullscreen_change(self):
+        if self._on_fullscreen_change:
+            try:
+                self._on_fullscreen_change(self._fullscreen_mode)
+            except Exception:
+                pass
 
     # ── Thread-safe UI (Flet ana döngüsü) ────────────────────────────
 
@@ -609,12 +646,16 @@ class CustomVideoPlayer(ft.Container):
             await self._restore_position(saved_ms, attempt + 1)
 
     def close_player(self, e=None):
+        was_fullscreen = self._fullscreen_mode
+        if was_fullscreen:
+            self._fullscreen_mode = False
+            self._notify_fullscreen_change()
         self._is_alive = False
         self._hide_generation += 1
         self._progress_ui_generation += 1
         self._seek_guard_generation += 1
         self._unbind_keyboard()
-        if self._fullscreen_mode and self.custom_page.window:
+        if was_fullscreen and self.custom_page.window and not self._mobile:
             try:
                 self.custom_page.window.full_screen = False
             except Exception:
@@ -729,7 +770,7 @@ class CustomVideoPlayer(ft.Container):
 
     def toggle_fullscreen(self, e):
         self._fullscreen_mode = not self._fullscreen_mode
-        if self.custom_page.window:
+        if self.custom_page.window and not self._mobile:
             try:
                 self.custom_page.window.full_screen = self._fullscreen_mode
             except Exception:
@@ -737,6 +778,7 @@ class CustomVideoPlayer(ft.Container):
 
         shell = self._player_shell
         video_wrap = self.video_frame
+        pad = 6 if self._mobile else 12
 
         if self._fullscreen_mode:
             shell.padding = 0
@@ -747,7 +789,7 @@ class CustomVideoPlayer(ft.Container):
             self._hide_generation += 1
             self._set_controls_visible(False)
         else:
-            shell.padding = ft.Padding.symmetric(horizontal=12, vertical=12)
+            shell.padding = ft.Padding.symmetric(horizontal=pad, vertical=pad)
             video_wrap.border_radius = ft.BorderRadius.only(top_left=12, top_right=12)
             video_wrap.border = ft.Border.all(1, BORDER)
             self.fullscreen_btn.icon = ft.Icons.FULLSCREEN_ROUNDED
@@ -755,6 +797,7 @@ class CustomVideoPlayer(ft.Container):
             self._layout_windowed()
             self._set_controls_visible(True)
 
+        self._notify_fullscreen_change()
         self._patch_controls(self.fullscreen_btn)
         self._request_layout_ui()
 
