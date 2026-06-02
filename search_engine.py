@@ -252,17 +252,28 @@ def search_youtube(
             if not url:
                 continue
                 
-            # Sonucun kanal mı yoksa video mu olduğunu anlama
+            # Sonucun kanal mı, oynatma listesi mi yoksa video mu olduğunu anlama
             ie_key = entry.get("ie_key")
-            # If the original query was a direct video URL, do not treat the
-            # returned entry as a channel even if some heuristics match. This
-            # prevents opening an unrelated channel page when the user pasted
-            # a video link.
-            if query_is_video:
+            
+            # Oynatma listesi kontrolünü en önce yap (bazı oynatma listelerinin URL'lerinde kanal adı geçtiği için misclassification önlenir)
+            is_playlist = (
+                ie_key == "YoutubePlaylist" 
+                or "/playlist" in url 
+                or "list=" in url 
+                or entry.get("playlist_count") is not None
+            )
+            
+            if is_playlist:
+                is_channel = False
+            elif query_is_video:
                 is_channel = False
             else:
-                is_channel = ie_key == "YoutubeTab" or "/channel/" in url or "/@" in url or entry.get("channel_follower_count") is not None
-            is_playlist = entry.get("playlist_count") is not None and not is_channel and ie_key == "YoutubePlaylist"
+                is_channel = (
+                    ie_key == "YoutubeTab" 
+                    or "/channel/" in url 
+                    or "/@" in url 
+                    or entry.get("channel_follower_count") is not None
+                )
             
             # Ortak veri yapısı
             title = entry.get("title") or "Başlıksız"
@@ -285,7 +296,7 @@ def search_youtube(
                     "title": title,
                     "url": url,
                     "id": entry.get("id"),
-                    "video_count": entry.get("playlist_count") or 0,
+                    "video_count": entry.get("playlist_count") or entry.get("video_count") or 0,
                     "uploader": entry.get("uploader") or entry.get("channel") or "Bilinmiyor"
                 })
             else:
@@ -307,8 +318,8 @@ def get_channel_info(channel_url: str, sort_by: str = "latest") -> dict:
     Belirtilen kanal URL'sinden kanal detaylarını ve videolarını çeker.
     Kanalın tüm geçmişini değil, sadece ilk 30 videosunu çekerek sayfa yüklemesini aşırı hızlandırır (Optimization B).
     """
-    # YouTube kanal video sekmesini ekle
-    base_url = channel_url.split("/videos")[0].split("/shorts")[0].split("/playlists")[0]
+    # YouTube kanal video sekmesini ekle (Base URL sonundaki slash karakterini rstrip ile temizleyerek çift slash oluşmasını önle)
+    base_url = channel_url.split("/videos")[0].split("/shorts")[0].split("/playlists")[0].rstrip("/")
     
     if sort_by == "popular":
         fetch_url = f"{base_url}/videos?view=0&sort=p"
@@ -332,14 +343,79 @@ def get_channel_info(channel_url: str, sort_by: str = "latest") -> dict:
         }
     }
     
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(fetch_url, download=False)
-        if not info:
-            raise ValueError("Kanal bilgileri alınamadı.")
-            
-        avatar, banner = extract_thumbnails(info.get("thumbnails"))
+    # Kanal videolarını çekme işleminde hata toleransı (Fallback Extraction) eklenmiştir.
+    # Eğer doğrudan /videos linki başarısız olursa, yt-dlp'nin kanalın ana sayfasından otomatik çıkarması sağlanır.
+    info = None
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(fetch_url, download=False)
+    except Exception:
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(base_url, download=False)
+        except Exception:
+            pass
+
+    if not info:
+        raise ValueError("Kanal bilgileri alınamadı.")
         
-        # Videoları dönüştür
+    avatar, banner = extract_thumbnails(info.get("thumbnails"))
+    
+    # Videoları dönüştür
+    raw_entries = info.get("entries", [])
+    videos = []
+    for entry in raw_entries:
+        if not entry:
+            continue
+        url = entry.get("url") or (f"https://www.youtube.com/watch?v={entry['id']}" if entry.get("id") else None)
+        if not url:
+            continue
+            
+        videos.append({
+            "title": entry.get("title") or "Başlıksız",
+            "url": url,
+            "id": entry.get("id"),
+            "duration": format_duration(entry.get("duration")),
+            "uploader": info.get("channel") or info.get("uploader") or "Kanal Sahibi"
+        })
+        
+    return {
+        "name": info.get("channel") or info.get("uploader") or info.get("title") or "Bilinmeyen Kanal",
+        "url": base_url,
+        "avatar": avatar,
+        "banner": banner,
+        "subscribers": format_number(info.get("channel_follower_count")),
+        "video_count": info.get("playlist_count") or len(videos),
+        "description": info.get("description") or "Açıklama bulunmuyor.",
+        "videos": videos
+    }
+
+def get_playlist_info(playlist_url: str) -> dict:
+    """
+    Belirtilen oynatma listesi URL'sinden liste detaylarını ve videolarını çeker.
+    """
+    ydl_opts = {
+        "quiet": True,
+        "extract_flat": True,
+        "no_warnings": True,
+        "playlist_items": "1-50",          # Sadece ilk 50 videoyu çekerek sayfa yüklenmesini çok hızlı yapar!
+        
+        # Kararlılık seçenekleri
+        "retries": 10,
+        "nocheckcertificate": True,
+        "http_headers": HTTP_HEADERS,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "web"]
+            }
+        }
+    }
+    
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(playlist_url, download=False)
+        if not info:
+            raise ValueError("Oynatma listesi bilgileri alınamadı.")
+            
         raw_entries = info.get("entries", [])
         videos = []
         for entry in raw_entries:
@@ -354,16 +430,14 @@ def get_channel_info(channel_url: str, sort_by: str = "latest") -> dict:
                 "url": url,
                 "id": entry.get("id"),
                 "duration": format_duration(entry.get("duration")),
-                "uploader": info.get("channel") or info.get("uploader") or "Kanal Sahibi"
+                "uploader": entry.get("uploader") or info.get("uploader") or info.get("channel") or "Bilinmeyen Uploader"
             })
             
         return {
-            "name": info.get("channel") or info.get("uploader") or info.get("title") or "Bilinmeyen Kanal",
-            "url": base_url,
-            "avatar": avatar,
-            "banner": banner,
-            "subscribers": format_number(info.get("channel_follower_count")),
-            "video_count": info.get("playlist_count") or len(videos),
-            "description": info.get("description") or "Açıklama bulunmuyor.",
+            "name": info.get("title") or "Bilinmeyen Oynatma Listesi",
+            "url": playlist_url,
+            "uploader": info.get("uploader") or info.get("channel") or "Bilinmeyen Oluşturucu",
+            "video_count": info.get("playlist_count") or info.get("video_count") or len(videos),
+            "description": info.get("description") or "Oynatma Listesi Arşivi",
             "videos": videos
         }

@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vault — Video Arşivi</title>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Barlow Condensed + DM Sans + JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Vault CSS -->
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <div class="app-container">
+
+        <!-- Sidebar Navigation (Desktop) -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <div class="logo-mark">
+                    <i class="fa-solid fa-vault"></i>
+                </div>
+                <div class="logo-text-block">
+                    <span class="logo-text">VAULT</span>
+                    <span class="logo-sub">Video Arşivi</span>
+                </div>
+            </div>
+
+            <ul class="nav-menu">
+                <li class="nav-item active" onclick="switchTab('search')">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <span>Ara</span>
+                </li>
+                <li class="nav-item" onclick="switchTab('library')">
+                    <i class="fa-solid fa-film"></i>
+                    <span>İndirilenler</span>
+                </li>
+            </ul>
+
+            <div class="sidebar-footer">
+                <div class="sidebar-version">v1.0</div>
+            </div>
+        </aside>
+
+        <!-- Bottom Navigation (Mobile) -->
+        <nav class="bottom-nav">
+            <div class="bottom-nav-item active" onclick="switchTab('search')">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <span>Ara</span>
+            </div>
+            <div class="bottom-nav-item" onclick="switchTab('library')">
+                <i class="fa-solid fa-film"></i>
+                <span>İndirilenler</span>
+            </div>
+        </nav>
+
+        <!-- Main Content Wrapper -->
+        <main class="main-content">
+
+            <!-- Main Header -->
+            <header class="main-header">
+                <div class="header-left">
+                    <div class="header-slash">/</div>
+                    <h1 class="header-title" id="page-title">ARA</h1>
+                </div>
+                <div class="downloads-badge" onclick="switchTab('library')">
+                    <i class="fa-solid fa-circle-down"></i>
+                    <span>Aktif İndirmeler</span>
+                    <span class="downloads-count" id="active-downloads-count">0</span>
+                </div>
+            </header>
+
+            <!-- Search Page -->
+            <section id="page-search" class="page active">
+                <div class="search-container">
+
+                    <!-- Search Bar -->
+                    <div class="search-bar-wrapper">
+                        <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                        <input
+                            type="text"
+                            id="search-query"
+                            class="search-input"
+                            placeholder="Video adı, kanal veya link girin..."
+                            onkeypress="handleSearchKeyPress(event)"
+                        >
+                        <button class="search-btn" onclick="performSearch()">
+                            <span>ARA</span>
+                            <i class="fa-solid fa-arrow-right"></i>
+                        </button>
+                    </div>
+
+                    <!-- Filters -->
+                    <div class="filters-wrapper">
+                        <div class="filter-group">
+                            <span class="filter-label">TÜR</span>
+                            <div class="filter-pills" id="filter-type">
+                                <span class="filter-pill active" data-value="video">Video</span>
+                                <span class="filter-pill" data-value="channel">Kanal</span>
+                                <span class="filter-pill" data-value="playlist">Oynatma Listesi</span>
+                                <span class="filter-pill" data-value="shorts">Shorts</span>
+                            </div>
+                        </div>
+                        <div class="filter-divider"></div>
+                        <div class="filter-group">
+                            <span class="filter-label">TARİH</span>
+                            <div class="filter-pills" id="filter-date">
+                                <span class="filter-pill active" data-value="any">Tüm Zamanlar</span>
+                                <span class="filter-pill" data-value="today">Son 24 Saat</span>
+                                <span class="filter-pill" data-value="week">Bu Hafta</span>
+                                <span class="filter-pill" data-value="month">Bu Ay</span>
+                                <span class="filter-pill" data-value="year">Bu Yıl</span>
+                            </div>
+                        </div>
+                        <div class="filter-divider"></div>
+                        <div class="filter-group">
+                            <span class="filter-label">SIRALA</span>
+                            <div class="filter-pills" id="filter-sort">
+                                <span class="filter-pill active" data-value="relevance">Alaka Düzeyi</span>
+                                <span class="filter-pill" data-value="date">Yükleme Tarihi</span>
+                                <span class="filter-pill" data-value="views">İzlenme</span>
+                                <span class="filter-pill" data-value="likes">Beğeni</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Loading Bar -->
+                    <div class="loading-bar" id="search-loading"></div>
+
+                    <!-- Search Results -->
+                    <div class="results-grid" id="search-results">
+                        <div class="empty-state">
+                            <div class="empty-icon-box">
+                                <i class="fa-solid fa-compass"></i>
+                            </div>
+                            <span class="empty-title">Keşfetmeye Başlayın</span>
+                            <span class="empty-desc">YouTube videolarını aramak ve indirmek için yukarıdaki arama kutusunu kullanın.</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Library Page -->
+            <section id="page-library" class="page">
+                <div class="library-layout">
+
+                    <!-- Active Downloads -->
+                    <div class="library-section" id="active-downloads-section">
+                        <div class="section-header">
+                            <div class="section-label-row">
+                                <div class="section-dot active-dot"></div>
+                                <span class="section-title">AKTİF İNDİRMELER</span>
+                            </div>
+                        </div>
+                        <div class="downloads-list" id="active-downloads-list">
+                            <div class="empty-state">
+                                <div class="empty-icon-box">
+                                    <i class="fa-solid fa-circle-check"></i>
+                                </div>
+                                <span class="empty-title">Aktif İndirme Yok</span>
+                                <span class="empty-desc">Şu anda devam eden herhangi bir indirme bulunmuyor.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Library -->
+                    <div class="library-section">
+                        <div class="section-header">
+                            <div class="section-label-row">
+                                <div class="section-dot"></div>
+                                <span class="section-title">KÜTÜPHANEMİ</span>
+                            </div>
+                        </div>
+                        <div class="library-grid" id="library-videos-list">
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Channel Modal -->
+    <div class="overlay" id="overlay-channel">
+        <div class="channel-panel">
+            <div class="channel-close" onclick="closeChannelOverlay()">
+                <i class="fa-solid fa-xmark"></i>
+            </div>
+
+            <div class="channel-banner-box">
+                <img id="ch-banner" class="channel-banner-img" src="" alt="Banner" style="display: none;">
+                <div class="channel-banner-placeholder"></div>
+            </div>
+
+            <div class="channel-header-box">
+                <img id="ch-avatar" class="channel-header-avatar" src="" alt="Avatar">
+                <div class="channel-header-info">
+                    <h2 class="channel-name" id="ch-name">
+                        Kanal Adı
+                        <i class="fa-solid fa-circle-check verified-icon" id="ch-verified" style="display:none;"></i>
+                    </h2>
+                    <span class="channel-sub-count" id="ch-subs">0 Abone</span>
+                </div>
+            </div>
+
+            <p class="channel-desc" id="ch-desc">Açıklama bulunmuyor.</p>
+
+            <div class="channel-sort-row">
+                <span class="channel-sort-title">VİDEOLAR</span>
+                <div class="channel-sort-tabs">
+                    <span class="channel-sort-tab active" data-sort="latest" onclick="sortChannelVideos('latest')">En Yeni</span>
+                    <span class="channel-sort-tab" data-sort="popular" onclick="sortChannelVideos('popular')">En Popüler</span>
+                </div>
+            </div>
+
+            <div class="channel-videos-list" id="ch-videos-list"></div>
+        </div>
+    </div>
+
+    <!-- Video Player Modal -->
+    <div class="overlay" id="overlay-player">
+        <div class="player-panel">
+            <div class="player-header">
+                <span class="player-title" id="player-video-title">Video Başlığı</span>
+                <div class="player-close" onclick="closePlayer()">
+                    <i class="fa-solid fa-xmark"></i>
+                </div>
+            </div>
+            <div class="video-container">
+                <video id="vault-video-element" controls autoplay preload="auto">
+                    Tarayıcınız HTML5 video oynatmayı desteklemiyor.
+                </video>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- App JavaScript -->
+    <script src="/static/app.js"></script>
+</body>
+</html>
