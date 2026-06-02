@@ -27,3 +27,7 @@ description = "Video archive app"
 permissions = [
     "android.permission.INTERNET",
 ]
+
+[tool.flet.android.manifest_application]
+usesCleartextTraffic = "true"
+requestLegacyExternalStorage = "true"
