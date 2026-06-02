@@ -17,13 +17,7 @@ from pydantic import BaseModel
 from search_engine import search_youtube, get_channel_info
 import downloader
 
-# Defensive GUI imports - ensures headless/server-only runs don't crash on import
-try:
-    import webview
-except ImportError:
-    webview = None
-
-# ── Playback Position Helpers (Decoupled from player.py/Flet) ──────
+# ── Playback Position Helpers ──────────────────────────────────────
 
 def load_positions(download_path: str) -> dict:
     pos_file = Path(download_path) / ".playback_positions.json"
@@ -55,10 +49,9 @@ except OSError:
     download_path = str(Path(tempfile.gettempdir()) / "Vault" / "videos")
     os.makedirs(download_path, exist_ok=True)
 
-# ── FastAPI Application Setup ─────────────────────────────────────
+# ── FastAPI Application Setup ──────────────────────────────────────
 app = FastAPI(title="Vault - Video Archive API")
 
-# Mount Static Directory
 static_dir = Path(__file__).parent / "static"
 os.makedirs(static_dir, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
@@ -100,7 +93,6 @@ async def api_downloads():
 async def api_download(req: DownloadRequest, request: Request):
     user_agent = request.headers.get("user-agent", "").lower()
     is_mobile_client = "android" in user_agent or "iphone" in user_agent or "ipad" in user_agent
-    
     try:
         dl_id = downloader.start_download(
             url=req.url,
@@ -136,7 +128,6 @@ async def api_delete_video(filename: str):
     if os.path.exists(full_path):
         try:
             os.remove(full_path)
-            # Remove from positions if saved
             positions = load_positions(download_path)
             if full_path in positions:
                 del positions[full_path]
@@ -170,18 +161,14 @@ async def api_get_positions():
 # ── Robust Range Request Video Streaming ──────────────────────────
 
 def range_requests_response(request: Request, file_path: str, content_type: str):
-    """
-    Returns a partial content response (HTTP 206) supporting range seeks,
-    fully compatible with mobile webviews, pywebview, and standard web browsers.
-    """
     file_size = os.path.getsize(file_path)
     range_header = request.headers.get("range")
-    
+
     headers = {
         "content-type": content_type,
         "accept-ranges": "bytes",
     }
-    
+
     if range_header:
         try:
             h = range_header.replace("bytes=", "").strip()
@@ -190,14 +177,14 @@ def range_requests_response(request: Request, file_path: str, content_type: str)
             end = int(parts[1]) if parts[1] else file_size - 1
         except ValueError:
             raise HTTPException(status_code=416, detail="Invalid Range Header")
-            
+
         if start >= file_size or end >= file_size or start > end:
             raise HTTPException(status_code=416, detail="Invalid Range Header")
-            
+
         chunk_size = end - start + 1
         headers["content-range"] = f"bytes {start}-{end}/{file_size}"
         headers["content-length"] = str(chunk_size)
-        
+
         def file_iterator():
             with open(file_path, "rb") as f:
                 f.seek(start)
@@ -208,10 +195,11 @@ def range_requests_response(request: Request, file_path: str, content_type: str)
                         break
                     remaining -= len(chunk)
                     yield chunk
-                    
+
         return StreamingResponse(file_iterator(), status_code=206, headers=headers)
     else:
         headers["content-length"] = str(file_size)
+
         def file_iterator():
             with open(file_path, "rb") as f:
                 while True:
@@ -219,6 +207,7 @@ def range_requests_response(request: Request, file_path: str, content_type: str)
                     if not chunk:
                         break
                     yield chunk
+
         return StreamingResponse(file_iterator(), status_code=200, headers=headers)
 
 @app.get("/video/{filename}")
@@ -226,13 +215,13 @@ async def stream_video(filename: str, request: Request):
     full_path = os.path.join(download_path, filename)
     if not os.path.exists(full_path):
         raise HTTPException(status_code=404, detail="Video file not found")
-        
+
     content_type = "video/mp4"
     if filename.endswith(".webm"):
         content_type = "video/webm"
     elif filename.endswith(".mkv"):
         content_type = "video/x-matroska"
-        
+
     return range_requests_response(request, full_path, content_type)
 
 # ── Server Helper ──────────────────────────────────────────────────
@@ -254,27 +243,97 @@ def start_server_in_thread(host: str = "127.0.0.1", port: int = 8000):
 
 def detect_mode() -> str:
     is_android = (
-        "ANDROID_ROOT" in os.environ or 
-        "TERMUX_VERSION" in os.environ or 
-        os.path.exists("/system/build.prop") or 
+        "ANDROID_ROOT" in os.environ or
+        "TERMUX_VERSION" in os.environ or
+        os.path.exists("/system/build.prop") or
         os.path.exists("/data/data/com.termux")
     )
-    if is_android:
-        return "mobile"
-    return "desktop"
+    return "mobile" if is_android else "desktop"
+
+# ── Flet WebView Launcher (Desktop + Mobile ortak) ────────────────
+
+def launch_flet_webview(url: str, title: str = "Vault", width: int = 440, height: int = 840):
+    """
+    Flet + flet_webview ile pencere açar.
+    Hem masaüstü hem mobil platformda çalışır.
+    flet veya flet_webview yüklü değilse False döner.
+    """
+    try:
+        import flet as ft
+    except ImportError:
+        print("Hata: 'flet' paketi yüklü değil.")
+        return False
+
+    try:
+        import flet_webview as fwv
+        HAS_FLET_WEBVIEW = True
+    except ImportError:
+        fwv = None
+        HAS_FLET_WEBVIEW = False
+
+    def run_app(page: ft.Page):
+        page.title = title
+        page.padding = 0
+        page.spacing = 0
+        page.window.width = width
+        page.window.height = height
+        page.window.resizable = True
+
+        if HAS_FLET_WEBVIEW:
+            page.add(fwv.WebView(url=url, expand=True))
+        else:
+            page.add(
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Icon(ft.Icons.WARNING_ROUNDED, color="amber", size=48),
+                            ft.Text(
+                                "flet-webview bu platformda desteklenmiyor / yüklü değil.",
+                                size=16,
+                                weight="bold",
+                                text_align=ft.TextAlign.CENTER,
+                            ),
+                            ft.Text(
+                                f"Tarayıcınızdan açın: {url}",
+                                size=14,
+                                text_align=ft.TextAlign.CENTER,
+                            ),
+                        ],
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=10,
+                    ),
+                    alignment=ft.alignment.center,
+                    expand=True,
+                )
+            )
+
+    try:
+        ft.app(target=run_app)
+        return True
+    except Exception as e:
+        print(f"Flet arayüzü başlatılamadı: {e}")
+        return False
+
+# ── Web-Only Fallback ──────────────────────────────────────────────
+
+def run_web_only(url: str):
+    print(f"Uygulama yayında! Lütfen tarayıcınızda açın: {url}")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nVault durduruldu.")
 
 # ── Main Entry ─────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description="Vault - Video Archive App (FastAPI + HTML)")
-    parser.add_argument("--web", action="store_true", help="Launch live on localhost")
-    parser.add_argument("--desktop", action="store_true", help="Launch live and open as pywebview window")
-    parser.add_argument("--mobile", action="store_true", help="Launch live and open as Flet WebView mobile version")
-    
+    parser.add_argument("--web",     action="store_true", help="Sadece sunucu; tarayıcıdan aç")
+    parser.add_argument("--desktop", action="store_true", help="Flet WebView ile masaüstü penceresi aç")
+    parser.add_argument("--mobile",  action="store_true", help="Flet WebView ile mobil pencere aç")
     args = parser.parse_args()
-    
-    # Determine which mode to run
-    mode = None
+
+    # Mod belirleme
     if args.web:
         mode = "web"
     elif args.desktop:
@@ -282,119 +341,37 @@ def main():
     elif args.mobile:
         mode = "mobile"
     else:
-        # Default: auto-detect by OS
         mode = detect_mode()
         print(f"Platform algılandı. Varsayılan başlatma modu: --{mode}")
 
-    # Set up host and port
+    # Sunucu her zaman 127.0.0.1'de dinler
     host = "127.0.0.1"
     port = 8000
-    
-    # Solve port conflicts if 8000 is occupied
     while is_port_in_use(port):
         port += 1
-        
-    url = f"http://{host}:{port}"
-    
+
+    # Android WebView http://127.0.0.1'i ERR_CLEARTEXT_NOT_PERMITTED ile bloklar;
+    # localhost ise Android'in izin listesinde olduğu için geçer.
+    if mode == "mobile":
+        url = f"http://localhost:{port}"
+    else:
+        url = f"http://127.0.0.1:{port}"
+
     print(f"Vault backend server başlatılıyor: {url}")
     start_server_in_thread(host, port)
-    
-    # Wait for the FastAPI server to initialize fully
-    time.sleep(0.8)
+    time.sleep(0.8)  # Sunucunun ayağa kalkmasını bekle
 
     if mode == "web":
-        print(f"Uygulama yayında! Lütfen tarayıcınızda açın: {url}")
-        # Keep main thread alive
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            print("\nVault durduruldu.")
-            
-    elif mode == "desktop":
-        if webview is None:
-            print("Hata: 'pywebview' masaüstü paketi yüklü değil. --web modu olarak çalıştırılıyor.")
-            print(f"Uygulama yayında! Lütfen tarayıcınızda açın: {url}")
-            try:
-                while True:
-                    time.sleep(1)
-            except KeyboardInterrupt:
-                pass
-            return
-            
-        print("Desktop Penceresi (pywebview) açılıyor...")
-        try:
-            webview.create_window("Vault - Video Arşivi", url, width=440, height=840, resizable=False)
-            webview.start()
-        except Exception as e:
-            print(f"Grafiksel masaüstü penceresi başlatılamadı: {e}")
-            print(f"Düşüş modu: Sunucu yayında kalmaya devam ediyor: {url}")
-            try:
-                while True:
-                    time.sleep(1)
-            except KeyboardInterrupt:
-                pass
-                
-    elif mode == "mobile":
-        # Dynamic import of Flet elements to ensure headless environments don't crash
-        try:
-            import flet as ft
-            try:
-                import flet_webview as fwv
-                HAS_FLET_WEBVIEW = True
-            except ImportError:
-                fwv = None
-                HAS_FLET_WEBVIEW = False
-        except ImportError:
-            print("Hata: 'flet' mobil paketi yüklü değil. --web modu olarak çalıştırılıyor.")
-            print(f"Uygulama yayında! Lütfen tarayıcınızda açın: {url}")
-            try:
-                while True:
-                    time.sleep(1)
-            except KeyboardInterrupt:
-                pass
-            return
+        run_web_only(url)
 
-        print("Flet WebView (Mobil Görünüm) açılıyor...")
-        
-        def run_flet_app(page: ft.Page):
-            page.title = "Vault Mobile"
-            page.padding = 0
-            page.spacing = 0
-            page.window.width = 440
-            page.window.height = 840
-            page.window.resizable = True
-            
-            if HAS_FLET_WEBVIEW:
-                wv = fwv.WebView(url=url, expand=True)
-                page.add(wv)
-            else:
-                page.add(
-                    ft.Container(
-                        content=ft.Column(
-                            [
-                                ft.Icon(ft.Icons.WARNING_ROUNDED, color="amber", size=48),
-                                ft.Text("flet-webview bu platformda desteklenmiyor/yüklü değil.", size=16, weight="bold"),
-                                ft.Text(f"Lütfen tarayıcınızdan şu adrese gidin: {url}", size=14)
-                            ],
-                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                            spacing=10
-                        ),
-                        alignment=ft.Alignment.CENTER,
-                        expand=True
-                    )
-                )
-                
-        try:
-            ft.app(target=run_flet_app)
-        except Exception as e:
-            print(f"Flet mobil arayüzü başlatılamadı: {e}")
-            print(f"Düşüş modu: Sunucu yayında kalmaya devam ediyor: {url}")
-            try:
-                while True:
-                    time.sleep(1)
-            except KeyboardInterrupt:
-                pass
+    elif mode in ("desktop", "mobile"):
+        width, height = (1280, 800) if mode == "desktop" else (440, 840)
+        title = "Vault - Video Arşivi"
+
+        success = launch_flet_webview(url, title=title, width=width, height=height)
+        if not success:
+            print("Flet WebView başlatılamadı. --web moduna düşülüyor.")
+            run_web_only(url)
 
 if __name__ == "__main__":
     main()
