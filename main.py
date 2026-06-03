@@ -303,13 +303,13 @@ def launch_flet_webview(url: str, title: str = "Vault", width: int = 440, height
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                         spacing=10,
                     ),
-                    alignment=ft.alignment.center,
+                    alignment=ft.Alignment.CENTER,
                     expand=True,
                 )
             )
 
     try:
-        ft.app(target=run_app)
+        ft.run(run_app)
         return True
     except Exception as e:
         print(f"Flet arayüzü başlatılamadı: {e}")
