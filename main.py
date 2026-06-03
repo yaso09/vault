@@ -354,7 +354,7 @@ def main():
             page.window.resizable = True
             
             if HAS_FLET_WEBVIEW:
-                def on_page_ended(e):
+                def on_page_started(e):
                     try:
                         app_js_path = Path(__file__).parent / "static" / "app.js"
                         if app_js_path.exists():
@@ -366,7 +366,7 @@ def main():
                 wv = fwv.WebView(
                     url=f"{url}/?webview=flet",
                     expand=True,
-                    on_page_ended=lambda e: on_page_ended(e)
+                    on_page_started=lambda e: on_page_started(e)
                 )
                 page.add(wv)
             else:
