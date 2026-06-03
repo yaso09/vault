@@ -266,7 +266,7 @@ def launch_flet_webview(url: str, title: str = "Vault", width: int = 440, height
 
     try:
         import flet_webview as fwv
-	from flet_webview import WebViewConfiguration
+		from flet_webview import WebViewConfiguration
         HAS_FLET_WEBVIEW = True
     except ImportError:
         fwv = None
