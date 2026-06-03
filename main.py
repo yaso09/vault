@@ -359,14 +359,14 @@ def main():
                         app_js_path = Path(__file__).parent / "static" / "app.js"
                         if app_js_path.exists():
                             js_content = app_js_path.read_text(encoding="utf-8")
-                            wv.run_javascript(js_content)
+                            e.control.run_javascript(js_content)
                     except Exception as ex:
                         print(f"JavaScript çalıştırma hatası: {ex}")
 
                 wv = fwv.WebView(
                     url=f"{url}/?webview=flet",
                     expand=True,
-                    on_page_ended=on_page_ended
+                    on_page_ended=lambda e: on_page_ended(e)
                 )
                 page.add(wv)
             else:
