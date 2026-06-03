@@ -361,8 +361,7 @@ def main():
                 async def load_webview():
                     try:
                         await wv.set_javascript_mode(fwv.JavaScriptMode.UNRESTRICTED)
-                        wv.url = f"{url}/?webview=flet"
-                        page.update()
+                        await wv.load_request(f"{url}/?webview=flet")
                     except Exception as ex:
                         print(f"WebView yükleme hatası: {ex}")
                 
