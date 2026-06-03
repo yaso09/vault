@@ -63,9 +63,8 @@ async def read_root(request: Request):
     index_file = static_dir / "index.html"
     if index_file.exists():
         content = index_file.read_text(encoding="utf-8")
-        webview_param = request.query_params.get("webview")
-        if not webview_param:
-            content = content.replace("</body>", '<script src="/static/app.js"></script>\n</body>')
+        # App.js is always injected to ensure it loads naturally in all environments (browsers & mobile webviews)
+        content = content.replace("</body>", '<script src="/static/app.js"></script>\n</body>')
         return HTMLResponse(content=content)
     return HTMLResponse(content="<h2>Vault static/index.html is missing. Please create it first.</h2>")
 
@@ -354,21 +353,20 @@ def main():
             page.window.resizable = True
             
             if HAS_FLET_WEBVIEW:
-                def on_page_started(e):
-                    try:
-                        app_js_path = Path(__file__).parent / "static" / "app.js"
-                        if app_js_path.exists():
-                            js_content = app_js_path.read_text(encoding="utf-8")
-                            e.control.run_javascript(js_content)
-                    except Exception as ex:
-                        print(f"JavaScript çalıştırma hatası: {ex}")
-
                 wv = fwv.WebView(
-                    url=f"{url}/?webview=flet",
-                    expand=True,
-                    on_page_started=lambda e: on_page_started(e)
+                    expand=True
                 )
                 page.add(wv)
+                
+                async def load_webview():
+                    try:
+                        await wv.set_javascript_mode(fwv.JavaScriptMode.UNRESTRICTED)
+                        wv.url = f"{url}/?webview=flet"
+                        page.update()
+                    except Exception as ex:
+                        print(f"WebView yükleme hatası: {ex}")
+                
+                page.run_task(load_webview)
             else:
                 page.add(
                     ft.Container(
