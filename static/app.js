@@ -1,5 +1,3 @@
-alert("JavaScript is working");
-
 const state = {
     activeTab: 'search',
     filters: {
