@@ -1,4 +1,4 @@
-// Vault JavaScript Application Logic
+alert("JavaScript is working");
 
 const state = {
     activeTab: 'search',
