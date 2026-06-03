@@ -272,7 +272,7 @@ def launch_flet_webview(url: str, title: str = "Vault", width: int = 440, height
         fwv = None
         HAS_FLET_WEBVIEW = False
 
-    def run_app(page: ft.Page):
+    async def run_app(page: ft.Page):
         page.title = title
         page.padding = 0
         page.spacing = 0
@@ -281,7 +281,16 @@ def launch_flet_webview(url: str, title: str = "Vault", width: int = 440, height
         page.window.resizable = True
 
         if HAS_FLET_WEBVIEW:
-            page.add(fwv.WebView(url=url, expand=True, configuration=WebViewConfiguration(enable_javascript=True, enable_dom_storage=True)))
+            web_page = fwv.WebView(url=url, expand=True)
+            page.add(web_page)
+            try:
+                await web_page.disable_zoom()
+            except Exception as e:
+                print(f"WebView zoom devredışı bırakılamadı: {e}")
+            try:
+                await web_page.set_javascript_mode(fwv.JavaScriptMode.UNRESTRICTED)
+            except Exception as e:
+                print(f"WebView javascript modu ayarlanamadı: {e}")
         else:
             page.add(
                 ft.Container(
