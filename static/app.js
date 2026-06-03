@@ -47,11 +47,17 @@ const elements = {
 };
 
 // Initial Setup
-document.addEventListener('DOMContentLoaded', () => {
+const initializeApp = () => {
     setupFilterListeners();
     refreshLibrary();
     startPollingDownloads(); // Start initial poll to check if anything is running
-});
+};
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeApp);
+} else {
+    initializeApp();
+}
 
 // Toast Helper
 function showToast(message, type = 'primary') {
