@@ -356,7 +356,7 @@ def main():
                 wv = fwv.WebView(
                     expand=True
                 )
-                page.add(wv)
+                page.add(ft.SafeArea(content=wv, expand=True))
                 
                 async def load_webview():
                     try:
@@ -367,8 +367,8 @@ def main():
                 
                 page.run_task(load_webview)
             else:
-                page.add(
-                    ft.Container(
+                page.add(ft.SafeArea(
+                    content=ft.Container(
                         content=ft.Column(
                             [
                                 ft.Icon(ft.Icons.WARNING_ROUNDED, color="amber", size=48),
@@ -380,7 +380,7 @@ def main():
                         ),
                         alignment=ft.Alignment.CENTER,
                         expand=True
-                    )
+                    ), expand=True
                 )
                 
         try:
