@@ -381,7 +381,7 @@ def main():
                         alignment=ft.Alignment.CENTER,
                         expand=True
                     ), expand=True
-                )
+                ))
                 
         try:
             ft.app(target=run_flet_app)
