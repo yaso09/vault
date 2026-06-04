@@ -1445,3 +1445,8 @@ video {
         padding: 8px 12px;
     }
 }
+@media (max-width: 768px) {
+    .page {
+        padding-bottom: calc(64px + 28px); /* navbar + boşluk */
+    }
+}
