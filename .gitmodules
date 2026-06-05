@@ -1,0 +1,4 @@
+[submodule "FFmpeg-WASI"]
+	path = FFmpeg-WASI
+	url = https://github.com/SebastiaanYN/FFmpeg-WASI
+	branch = master
