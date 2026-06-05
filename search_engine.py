@@ -169,6 +169,105 @@ HTTP_HEADERS = {
     "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
 }
 
+def fetch_playlist_search_metadata(search_url: str) -> dict:
+    """
+    YouTube arama sayfasını doğrudan çekerek oynatma listelerinin video sayısı ve uploader
+    bilgilerini içeren bir harita döner.
+    """
+    import urllib.request
+    import urllib.error
+    import json
+    
+    import urllib.parse
+    metadata_map = {}
+    try:
+        parsed_url = urllib.parse.urlparse(search_url)
+        query_params = urllib.parse.parse_qsl(parsed_url.query)
+        encoded_query = urllib.parse.urlencode(query_params)
+        safe_search_url = urllib.parse.urlunparse((
+            parsed_url.scheme,
+            parsed_url.netloc,
+            parsed_url.path,
+            parsed_url.params,
+            encoded_query,
+            parsed_url.fragment
+        ))
+        
+        req = urllib.request.Request(safe_search_url, headers=HTTP_HEADERS)
+        with urllib.request.urlopen(req, timeout=5) as response:
+            html = response.read().decode("utf-8")
+        
+        m = re.search(r'var ytInitialData\s*=\s*(\{.*?\});', html)
+        if not m:
+            m = re.search(r'window\["ytInitialData"\]\s*=\s*(\{.*?\});', html)
+            
+        if m:
+            data = json.loads(m.group(1))
+            contents = data.get("contents", {}).get("twoColumnSearchResultsRenderer", {}).get("primaryContents", {}).get("sectionListRenderer", {}).get("contents", [])
+            for section in contents:
+                if "itemSectionRenderer" not in section:
+                    continue
+                items = section["itemSectionRenderer"].get("contents", [])
+                for item in items:
+                    # Yeni YouTube düzeni: lockupViewModel
+                    if "lockupViewModel" in item:
+                        vm = item["lockupViewModel"]
+                        if vm.get("contentType") == "LOCKUP_CONTENT_TYPE_PLAYLIST":
+                            playlist_id = vm.get("contentId")
+                            if playlist_id:
+                                # Video sayısı badge bilgisinden çekilir
+                                video_count_text = ""
+                                overlays = vm.get("contentImage", {}).get("collectionThumbnailViewModel", {}).get("primaryThumbnail", {}).get("thumbnailViewModel", {}).get("overlays", [])
+                                for overlay in overlays:
+                                    badge_vm = overlay.get("thumbnailOverlayBadgeViewModel", {})
+                                    badges = badge_vm.get("thumbnailBadges", [])
+                                    if badges:
+                                        text = badges[0].get("thumbnailBadgeViewModel", {}).get("text")
+                                        if text:
+                                            video_count_text = text
+                                            break
+                                            
+                                # Kanal/Yükleyici bilgisi
+                                uploader = ""
+                                rows = vm.get("metadata", {}).get("lockupMetadataViewModel", {}).get("metadata", {}).get("contentMetadataViewModel", {}).get("metadataRows", [])
+                                if rows:
+                                    parts = rows[0].get("metadataParts", [])
+                                    if parts:
+                                        uploader = parts[0].get("text", {}).get("content", "")
+                                        
+                                # Video sayısını sayıya dönüştürme
+                                video_count = 0
+                                if video_count_text:
+                                    digits = re.findall(r'\d+', video_count_text.replace(".", "").replace(",", ""))
+                                    if digits:
+                                        video_count = int(digits[0])
+                                        
+                                metadata_map[playlist_id] = {
+                                    "uploader": uploader,
+                                    "video_count": video_count
+                                }
+                    # Eski YouTube düzeni: playlistRenderer
+                    elif "playlistRenderer" in item:
+                        pl = item["playlistRenderer"]
+                        playlist_id = pl.get("playlistId")
+                        if playlist_id:
+                            video_count_text = pl.get("videoCountText", {}).get("runs", [{}])[0].get("text", "") or pl.get("videoCountText", {}).get("simpleText", "")
+                            video_count = 0
+                            if video_count_text:
+                                digits = re.findall(r'\d+', video_count_text.replace(".", "").replace(",", ""))
+                                if digits:
+                                    video_count = int(digits[0])
+                                    
+                            uploader = pl.get("shortBylineText", {}).get("runs", [{}])[0].get("text", "") or pl.get("longBylineText", {}).get("runs", [{}])[0].get("text", "")
+                            metadata_map[playlist_id] = {
+                                "uploader": uploader,
+                                "video_count": video_count
+                            }
+    except Exception as e:
+        print(f"Oynatma listesi arama detayları çekilirken hata oluştu: {e}", file=sys.stderr)
+        
+    return metadata_map
+
 def search_youtube(
     query: str,
     type_filter: str = "video",
@@ -211,6 +310,11 @@ def search_youtube(
                 search_url = f"https://www.youtube.com/results?search_query={query_str}&sp=EgIQAw%253D%253D"
             else:
                 search_url = f"https://www.youtube.com/results?search_query={query_str}&sp=EgIQAQ%253D%253D"
+
+    # Oynatma listesi aramalarında video sayısı ve uploader bilgisini çekmek için ön-tarama
+    playlist_metadata_map = {}
+    if type_mapped == "playlist" and not is_url:
+        playlist_metadata_map = fetch_playlist_search_metadata(search_url)
 
     ydl_opts = {
         "quiet": True,
@@ -291,13 +395,15 @@ def search_youtube(
                     "is_verified": entry.get("channel_is_verified", False)
                 })
             elif is_playlist:
+                playlist_id = entry.get("id")
+                meta = playlist_metadata_map.get(playlist_id, {})
                 results.append({
                     "type": "playlist",
                     "title": title,
                     "url": url,
-                    "id": entry.get("id"),
-                    "video_count": entry.get("playlist_count") or entry.get("video_count") or 0,
-                    "uploader": entry.get("uploader") or entry.get("channel") or "Bilinmiyor"
+                    "id": playlist_id,
+                    "video_count": meta.get("video_count") or entry.get("playlist_count") or entry.get("video_count") or 0,
+                    "uploader": meta.get("uploader") or entry.get("uploader") or entry.get("channel") or "Bilinmiyor"
                 })
             else:
                 # Video veya Shorts
