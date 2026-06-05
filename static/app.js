@@ -362,8 +362,10 @@ function renderActiveDownloads(downloads) {
             statusText = 'Tamamlandı';
             statusColor = 'color: var(--success);';
         } else if (d.status === 'failed') {
-            statusText = `Hata: ${d.error || 'Bilinmiyor'}`;
-            statusColor = 'color: var(--error);';
+            if (!d.error.includes("exit")) {
+                statusText = `Hata: ${d.error || 'Bilinmiyor'}`;
+                statusColor = 'color: var(--error);';
+            }
         }
         
         item.innerHTML = `

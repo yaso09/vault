@@ -15,8 +15,8 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 # Project imports
-from search_engine import search_youtube, get_channel_info
-import downloader
+from utils.search_engine import search_youtube, get_channel_info
+import utils.downloader as downloader
 
 # ── Playback Position Helpers (Decoupled from player.py/Flet) ──────
 

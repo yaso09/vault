@@ -9,7 +9,9 @@ dependencies = [
     "flet>=0.85.2",
     "flet-webview>=0.85.2",
     "pydantic",
+    "pytubefix>=10.9.0",
     "uvicorn",
+    "wasmtime>=45.0.0",
     "yt-dlp>=2026.3.17",
 ]
 

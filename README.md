@@ -36,13 +36,15 @@ Kaynak koddan çalıştırmak için [uv](https://docs.astral.sh/uv/) ve [Docker]
 
 ```bash
 git clone --recurse-submodules https://github.com/yaso09/vault
-
 cd vault
 uv sync
+```
 
-cd FFmpeg-WASI
-chmod +x build.sh
-./build.sh
+### FFmpeg'i Derleme
+
+```bash
+chmod +x build-ffmpeg.sh
+./build-ffmpeg.sh
 ```
 
 ### Çalıştırma
@@ -73,4 +75,4 @@ Bu proje **[GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.
 
 ---
 
-> Vault; [yt-dlp](https://github.com/yt-dlp/yt-dlp), [FFmpeg-WASI](https://github.com/SebastiaanYN/FFmpeg-WASI) ve [Flet](https://flet.dev) açık kaynak projeleri üzerine inşa edilmiştir.
+> Vault; [yt-dlp](https://github.com/yt-dlp/yt-dlp), [PyTubeFix](https://github.com/JuanBindez/pytubefix), [FFmpeg-WASI](https://github.com/SebastiaanYN/FFmpeg-WASI) ve [Flet](https://flet.dev) açık kaynak projeleri üzerine inşa edilmiştir.
