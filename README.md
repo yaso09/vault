@@ -1,4 +1,6 @@
-# 🔒 Vault
+<img src="./assets/banner.svg">
+
+<center><h1>🔒 Vault</h1></center>
 
 **Vault**, YouTube videolarını arayıp indirmenize ve indirdiğiniz videoları yerleşik oynatıcıyla izlemenize olanak tanıyan açık kaynaklı, çok platformlu bir uygulamadır. Python ve [Flet](https://flet.dev) çerçevesi üzerine inşa edilmiştir.
 
@@ -8,6 +10,11 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20iOS-0078D4?style=flat)](https://github.com/yaso09/vault/releases)
 [![License](https://img.shields.io/badge/Lisans-GPL--v3-green?style=flat)](https://www.gnu.org/licenses/gpl-3.0.html)
 [![Release](https://img.shields.io/github/v/release/yaso09/vault?style=flat&color=brightgreen)](https://github.com/yaso09/vault/releases)
+
+<p align="center">
+  <img src="./assets/screen-shot-1.png">
+  <img src="./assets/screen-shot-2.png">
+</p>
 
 ---
 
@@ -25,18 +32,23 @@
 
 Hazır kurulum istemiyorsanız uygulamayı kaynak koddan derlemenize gerek yok — en güncel çalıştırılabilir sürümü **[Releases](https://github.com/yaso09/vault/releases)** sayfasından indirip doğrudan kullanabilirsiniz.
 
-Kaynak koddan çalıştırmak için [uv](https://docs.astral.sh/uv/) gereklidir.
+Kaynak koddan çalıştırmak için [uv](https://docs.astral.sh/uv/) ve [Docker](https://www.docker.com/) gereklidir. Ayrıca Windows kullanıcılarının WSL kullanması gerekmektedir.
 
 ```bash
-git clone https://github.com/yaso09/vault
+git clone --recurse-submodules https://github.com/yaso09/vault
+
 cd vault
 uv sync
+
+cd FFmpeg-WASI
+chmod +x build.sh
+./build.sh
 ```
 
 ### Çalıştırma
 
 ```bash
-uv run main.py --desktop   # Masaüstü penceresi
+uv run main.py --desktop   # Masaüstü penceresi (Windows ve Linux'ta çalışmaz)
 uv run main.py --web       # Tarayıcıda aç
 uv run main.py --mobile    # Mobil görünüm (tarayıcı)
 ```
@@ -61,4 +73,4 @@ Bu proje **[GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.
 
 ---
 
-> Vault; [yt-dlp](https://github.com/yt-dlp/yt-dlp) ve [Flet](https://flet.dev) açık kaynak projeleri üzerine inşa edilmiştir.
+> Vault; [yt-dlp](https://github.com/yt-dlp/yt-dlp), [FFmpeg-WASI](https://github.com/SebastiaanYN/FFmpeg-WASI) ve [Flet](https://flet.dev) açık kaynak projeleri üzerine inşa edilmiştir.
