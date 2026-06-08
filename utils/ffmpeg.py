@@ -2,12 +2,10 @@ import sys
 
 is_android = hasattr(sys, "getandroidapilevel")
 
-sys.path.insert(0, "libs")
-
 if is_android:
-    from wasmtime_android import Engine, Store, Module, Linker, WasiConfig
-else: from wasmtime import Engine, Store, Module, Linker, WasiConfig
+    sys.path.insert(0, "libs")
 
+from wasmtime import Engine, Store, Module, Linker, WasiConfig
 from pathlib import Path
 
 
