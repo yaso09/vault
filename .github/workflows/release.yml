@@ -12,16 +12,28 @@ env:
 
 jobs:
 
-  # ── Sadece bir kez, sadece Linux'ta build edilir ──────────────────────────
+  # ── FFmpeg WASM build (cached) ────────────────────────────────────────────
   build-ffmpeg-wasm:
     name: Build FFmpeg WASM
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive       # FFmpeg-WASI submodule'ü çek
+          submodules: recursive
+
+      - name: Get FFmpeg submodule hash
+        id: ffmpeg-hash
+        run: echo "hash=$(git submodule status | sha256sum | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+
+      - name: Cache FFmpeg WASM binaries
+        id: cache-ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: binaries/
+          key: ffmpeg-wasm-${{ runner.os }}-${{ steps.ffmpeg-hash.outputs.hash }}-${{ hashFiles('build-ffmpeg.sh') }}
 
       - name: Build FFmpeg WASM
+        if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
         run: |
           chmod +x build-ffmpeg.sh
           ./build-ffmpeg.sh
@@ -30,14 +42,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ffmpeg-wasm-binaries
-          path: binaries/             # ffmpeg.py'nin baktığı BINARIES_DIR
+          path: binaries/
           if-no-files-found: error
 
   # ── Platform build'leri ───────────────────────────────────────────────────
   build:
     name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
-    needs: build-ffmpeg-wasm          # WASM hazır olmadan başlama
+    needs: build-ffmpeg-wasm
     strategy:
       fail-fast: false
       matrix:
@@ -87,7 +99,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ffmpeg-wasm-binaries
-          path: binaries/             # ffmpeg.py'deki BINARIES_DIR ile eşleşmeli
+          path: binaries/
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v6
@@ -135,7 +147,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          # ffmpeg-wasm-binaries artifact'ı da iner, filtrele:
           pattern: "*-build-artifact"
 
       - name: Zip each artifact
