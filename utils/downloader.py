@@ -1,11 +1,11 @@
 import os
+import re
 import time
 import threading
 import uuid
 import glob
 
-from pytubefix import YouTube
-from pytubefix.streams import Stream
+import yt_dlp
 
 from .ffmpeg import ffmpeg
 
@@ -16,47 +16,42 @@ active_downloads_lock = threading.Lock()
 # Auto-cleanup time in seconds for finished/failed downloads to keep the list clean
 CLEANUP_DELAY_SECONDS = 15.0
 
+# yt-dlp format selector:
+#   bestvideo[height<=1080]  → en iyi 1080p veya altı video-only stream
+#   bestaudio                → en iyi ses-only stream
+# İkisi birlikte indirilir, ffmpeg ile birleştirilir.
+_VIDEO_FORMAT = (
+    "bestvideo[height<=1080][vcodec^=avc1]/"   # önce H.264 1080p
+    "bestvideo[height<=1080][vcodec^=hev1]/"   # sonra H.265 1080p
+    "bestvideo[height<=1080][vcodec!=av01]/"   # AV1 hariç her codec 1080p
+    "bestvideo[vcodec^=avc1]/"                 # codec kısıtı kaldır, H.264
+    "bestvideo"                                # son çare
+)
+_AUDIO_FORMAT = "bestaudio[ext=m4a]/bestaudio"
+
 
 # ─── Format helpers ───────────────────────────────────────────────────────────
 
-def video_fmt(video_url: str) -> Stream | None:
+def video_fmt(video_url: str) -> dict | None:
     """
-    Returns the best video-only Stream object for the given URL,
-    or None if no adaptive video stream is available.
+    Returns info dict of the best video-only format for the given URL,
+    or None if unavailable. (Replaces pytubefix Stream object.)
     """
-    yt = YouTube(video_url, client="ANDROID_VR")
-    streams = yt.streams.filter(only_video=True, adaptive=True)
-    if not streams:
-        return None
-    # Sort by resolution (height), fps, then bitrate — pick the highest
-    best = max(
-        streams,
-        key=lambda s: (
-            int(s.resolution.replace("p", "")) if s.resolution else 0,
-            s.fps or 0,
-            s.bitrate or 0,
-        ),
-    )
-    return best
+    ydl_opts = {"quiet": True, "no_warnings": True, "format": _VIDEO_FORMAT}
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(video_url, download=False)
+        return info.get("requested_formats", [info])[0] if info else None
 
 
-def audio_fmt(video_url: str) -> Stream | None:
+def audio_fmt(video_url: str) -> dict | None:
     """
-    Returns the best audio-only Stream object for the given URL,
-    or None if no adaptive audio stream is available.
+    Returns info dict of the best audio-only format for the given URL,
+    or None if unavailable.
     """
-    yt = YouTube(video_url, client="ANDROID_VR")
-    streams = yt.streams.filter(only_audio=True, adaptive=True)
-    if not streams:
-        return None
-    best = max(
-        streams,
-        key=lambda s: (
-            s.abr_as_int if hasattr(s, "abr_as_int") else (int(s.abr.replace("kbps", "")) if s.abr else 0),
-            s.bitrate or 0,
-        ),
-    )
-    return best
+    ydl_opts = {"quiet": True, "no_warnings": True, "format": _AUDIO_FORMAT}
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(video_url, download=False)
+        return info.get("requested_formats", [info])[0] if info else None
 
 
 # ─── Public API ───────────────────────────────────────────────────────────────
@@ -117,47 +112,45 @@ def _update_status(download_id: str, **kwargs):
             active_downloads[download_id].update(kwargs)
 
 
-def _make_progress_hook(
-    download_id: str,
-    phase_offset: float,
-    phase_weight: float,
-    last_update_time: list,
-    stream_size: int,
-):
-    """
-    Returns a pytubefix on_progress callback that maps per-phase progress
-    onto the overall 0–1 progress scale.
+def _fmt_speed(speed_bps: float) -> str:
+    if speed_bps >= 1_048_576:
+        return f"{speed_bps / 1_048_576:.1f} MiB/s"
+    if speed_bps >= 1024:
+        return f"{speed_bps / 1024:.1f} KiB/s"
+    return f"{speed_bps:.0f} B/s"
 
-    Callback signature: (stream, chunk: bytes, bytes_remaining: int)
 
-    phase_offset : where this phase starts   (e.g. 0.00 for video, 0.45 for audio)
-    phase_weight : fraction of total covered (e.g. 0.45 for each, 0.10 for merge)
-    stream_size  : total file size in bytes (used to derive pct)
+def _make_ydl_hooks(download_id: str, phase_offset: float, phase_weight: float):
     """
-    def hook(stream: Stream, chunk: bytes, bytes_remaining: int):
+    Returns a yt-dlp progress hook list that maps per-phase download progress
+    onto the overall 0–1 scale, with throttling to ~4 Hz.
+
+    yt-dlp calls the hook with a dict containing:
+        status        : 'downloading' | 'finished' | 'error'
+        downloaded_bytes
+        total_bytes / total_bytes_estimate
+        speed         : bytes/s (float or None)
+        eta           : seconds remaining (int or None)
+    """
+    last_update_time = [0.0]
+
+    def hook(d: dict):
         now = time.time()
-        # Throttle updates to ~4 Hz to prevent lock contention
-        if now - last_update_time[0] >= 0.25:
-            if stream_size > 0:
-                downloaded = stream_size - bytes_remaining
-                pct = downloaded / stream_size
-            else:
-                pct = 0.0
+        status = d.get("status")
 
-            # Rough speed estimate based on chunk size and time delta
-            elapsed = now - last_update_time[0] if last_update_time[0] > 0 else 1.0
-            speed_bps = len(chunk) / elapsed if elapsed > 0 else 0
-            if speed_bps >= 1_048_576:
-                speed_str = f"{speed_bps / 1_048_576:.1f} MiB/s"
-            elif speed_bps >= 1024:
-                speed_str = f"{speed_bps / 1024:.1f} KiB/s"
-            else:
-                speed_str = f"{speed_bps:.0f} B/s"
+        if status == "downloading":
+            if now - last_update_time[0] < 0.25:
+                return  # throttle to ~4 Hz
 
-            eta_str = ""
-            if speed_bps > 0 and bytes_remaining > 0:
-                eta_secs = int(bytes_remaining / speed_bps)
-                eta_str = f"{eta_secs}s"
+            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+            downloaded = d.get("downloaded_bytes") or 0
+            pct = (downloaded / total) if total > 0 else 0.0
+
+            raw_speed = d.get("speed") or 0.0
+            speed_str = _fmt_speed(raw_speed) if raw_speed > 0 else ""
+
+            raw_eta = d.get("eta")
+            eta_str = f"{int(raw_eta)}s" if raw_eta else ""
 
             _update_status(
                 download_id,
@@ -168,7 +161,14 @@ def _make_progress_hook(
             )
             last_update_time[0] = now
 
-    return hook
+    return [hook]
+
+
+def _safe_filename(raw: str, fallback: str = "video") -> str:
+    """Strip characters that are illegal in filenames on Windows/macOS/Linux."""
+    safe = re.sub(r'[\\/:*?"<>|]', "", raw).strip()
+    safe = safe.rstrip(". ")  # sondaki nokta/boşluk FFmpeg'i karıştırır
+    return safe or fallback
 
 
 # ─── Worker ───────────────────────────────────────────────────────────────────
@@ -180,13 +180,11 @@ def _download_worker(
     download_path: str,
     is_mobile: bool,
 ):
-    # Unique prefix for temp files so concurrent downloads never collide
     short_id = download_id[:8]
-    video_tmp_name = f".tmp_{short_id}_video"
-    audio_tmp_name = f".tmp_{short_id}_audio"
+    video_tmp = os.path.join(download_path, f".tmp_{short_id}_video.mp4")
+    audio_tmp = os.path.join(download_path, f".tmp_{short_id}_audio.m4a")
 
     def cleanup_tmp():
-        """Delete all temp files belonging to this download_id."""
         for f in glob.glob(os.path.join(download_path, f".tmp_{short_id}_*")):
             try:
                 os.remove(f)
@@ -194,113 +192,59 @@ def _download_worker(
                 pass
 
     _update_status(download_id, status="downloading")
-    last_update = [0.0]
 
     try:
-        # ── 1. Resolve metadata & output filename ─────────────────────────────
-        yt = YouTube(url, client="ANDROID_VR")
-        safe_title = (
-            "".join(c for c in yt.title if c not in r'\/:*?"<>|').strip()
-            or title
-            or "video"
-        )
+        # ── 1. Resolve title for output filename ──────────────────────────────
+        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+            safe_title = _safe_filename(info.get("title", ""), fallback=title or "video")
+
         output_file = os.path.join(download_path, f"{safe_title}.mp4")
 
-        # ── 2. Pick the best video-only stream ───────────────────────────────
-        video_streams = yt.streams.filter(only_video=True, adaptive=True)
-        if not video_streams:
-            raise RuntimeError("Uygun video akışı bulunamadı.")
+        # ── 2. Download video-only stream (0 % → 45 %) ───────────────────────
+        ydl_video_opts = {
+            "format": _VIDEO_FORMAT,
+            "outtmpl": video_tmp,
+            "quiet": True,
+            "no_warnings": True,
+            "noprogress": True,
+            "progress_hooks": _make_ydl_hooks(download_id, 0.00, 0.45),
+        }
+        with yt_dlp.YoutubeDL(ydl_video_opts) as ydl:
+            ydl.download([url])
 
-        video_stream = max(
-            video_streams,
-            key=lambda s: (
-                int(s.resolution.replace("p", "")) if s.resolution else 0,
-                s.fps or 0,
-                s.bitrate or 0,
-            ),
-        )
+        if not os.path.isfile(video_tmp):
+            raise FileNotFoundError(f"Video geçici dosyası bulunamadı: {video_tmp}")
 
-        # ── 3. Download the video stream ──────────────────────────────────────
-        video_size = video_stream.filesize or 0
+        # ── 3. Download audio-only stream (45 % → 90 %) ──────────────────────
+        ydl_audio_opts = {
+            "format": _AUDIO_FORMAT,
+            "outtmpl": audio_tmp,
+            "quiet": True,
+            "no_warnings": True,
+            "noprogress": True,
+            "progress_hooks": _make_ydl_hooks(download_id, 0.45, 0.45),
+        }
+        with yt_dlp.YoutubeDL(ydl_audio_opts) as ydl:
+            ydl.download([url])
 
-        # Register phase-scoped progress hook (video: 0% → 45%)
-        yt.register_on_progress_callback(
-            _make_progress_hook(download_id, 0.00, 0.45, last_update, video_size)
-        )
+        if not os.path.isfile(audio_tmp):
+            raise FileNotFoundError(f"Ses geçici dosyası bulunamadı: {audio_tmp}")
 
-        # stream.download() returns the real absolute path it wrote to —
-        # use it directly instead of glob so concurrent downloads never collide.
-        video_ext = video_stream.subtype or "mp4"
-        video_file_name = f"/{video_tmp_name}.{video_ext}"
-        video_file: str = video_stream.download(
-            output_path=download_path,
-            filename=video_file_name,
-            skip_existing=False,
-        )
-
-        if not video_file or not os.path.isfile(video_file):
-            raise FileNotFoundError(
-                f"Video geçici dosyası bulunamadı (beklenen: {video_tmp_name}.{video_ext})"
-            )
-
-        # ── 4. Pick the best audio-only stream ───────────────────────────────
-        audio_streams = yt.streams.filter(only_audio=True, adaptive=True)
-        if not audio_streams:
-            raise RuntimeError("Uygun ses akışı bulunamadı.")
-
-        # Prefer m4a/mp4a for direct AAC remux; fall back to whatever is available
-        m4a_streams = [s for s in audio_streams if s.subtype == "mp4"]
-        audio_stream = max(
-            m4a_streams or audio_streams,
-            key=lambda s: (s.bitrate or 0),
-        )
-
-        # ── 5. Download the audio stream ──────────────────────────────────────
-        audio_size = audio_stream.filesize or 0
-
-        # Fresh YouTube object so we don't fight over the single progress callback slot
-        yt_audio = YouTube(url, client="ANDROID_VR")
-        yt_audio.register_on_progress_callback(
-            _make_progress_hook(download_id, 0.45, 0.45, last_update, audio_size)
-        )
-
-        audio_ext = audio_stream.subtype or "mp4"
-        # Re-fetch by itag on the new yt object so it inherits the new callback
-        audio_stream2 = yt_audio.streams.get_by_itag(audio_stream.itag)
-        if audio_stream2 is None:
-            audio_streams2 = yt_audio.streams.filter(only_audio=True, adaptive=True)
-            m4a2 = [s for s in audio_streams2 if s.subtype == "mp4"]
-            audio_stream2 = max(m4a2 or audio_streams2, key=lambda s: s.bitrate or 0)
-            audio_ext = audio_stream2.subtype or "mp4"
-
-        audio_file_name = f"/{audio_tmp_name}.{audio_ext}"
-        audio_file: str = audio_stream2.download(
-            output_path=download_path,
-            filename=audio_file_name,
-            skip_existing=False,
-        )
-
-        if not audio_file or not os.path.isfile(audio_file):
-            raise FileNotFoundError(
-                f"Ses geçici dosyası bulunamadı (beklenen: {audio_tmp_name}.{audio_ext})"
-            )
-
-        # ── 6. Merge via WASM FFmpeg ──────────────────────────────────────────
+        # ── 4. Merge via WASM FFmpeg (90 % → 100 %) ──────────────────────────
         _update_status(download_id, status="merging", progress=0.90)
-        
+
         # ffmpeg mounts download_path as WASI root "/".
-        # All paths passed to it must be basenames only — no subdirectory components.
-        # os.path.basename() is safe here because download() always writes into
-        # download_path (we pass output_path=download_path above).
+        # Pass only basenames — no subdirectory components.
         ret = ffmpeg(
             [
                 "-loglevel", "warning",
-                "-i", video_file_name,
-                "-i", audio_file_name,
-                "-c:v", "copy",       # video stream: remux as-is (no re-encode)
-                "-c:a", "aac",        # audio stream: encode to AAC for mp4 compat
+                "-i", os.path.basename(video_tmp),
+                "-i", os.path.basename(audio_tmp),
+                "-c:v", "copy",          # remux video as-is (no re-encode)
+                "-c:a", "aac",           # encode audio to AAC for mp4 compat
                 "-movflags", "+faststart",
-                "-y",                 # overwrite output if it already exists
+                "-y",
                 os.path.basename(output_file),
             ],
             workspace_dir=download_path,
@@ -309,7 +253,7 @@ def _download_worker(
         if ret != 0:
             raise RuntimeError(f"FFmpeg birleştirme başarısız oldu (çıkış kodu: {ret})")
 
-        # ── 7. Cleanup temp files ─────────────────────────────────────────────
+        # ── 5. Cleanup ────────────────────────────────────────────────────────
         cleanup_tmp()
 
         _update_status(

@@ -336,15 +336,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pytubefix"
-version = "7.4.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c5/e6/1fd92190a92d675c72a1c64ae7918088f5d0f8ce90077f01af8e98fb1216/pytubefix-7.4.0.tar.gz", hash = "sha256:9534219957058b53a20cf7939f163d4afb96356ab0f1d9d60274db1567b4cd88", size = 87552, upload-time = "2024-10-08T14:48:25.704Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/53/20/de83695875b0a16f9108854bda4544e9699baba5a39b5b3bc40ccae33eef/pytubefix-7.4.0-py3-none-any.whl", hash = "sha256:c7e2c31f7edae7e24f9605b1e7d01b75ac6f9f9978e2c6e6a29ead0a9040310a", size = 83409, upload-time = "2024-10-08T14:48:23.763Z" },
-]
-
-[[package]]
 name = "repath"
 version = "0.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -421,7 +412,6 @@ dependencies = [
     { name = "flet" },
     { name = "flet-webview" },
     { name = "pydantic" },
-    { name = "pytubefix" },
     { name = "uvicorn" },
     { name = "wasmtime" },
     { name = "yt-dlp" },
@@ -433,7 +423,6 @@ requires-dist = [
     { name = "flet", specifier = ">=0.85.2" },
     { name = "flet-webview", specifier = ">=0.85.2" },
     { name = "pydantic" },
-    { name = "pytubefix", specifier = "==7.4.0" },
     { name = "uvicorn" },
     { name = "wasmtime", specifier = ">=45.0.0" },
     { name = "yt-dlp", specifier = ">=2026.3.17" },
