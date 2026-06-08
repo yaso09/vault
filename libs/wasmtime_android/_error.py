@@ -2,7 +2,7 @@ from ctypes import byref, POINTER, c_int
 from . import _ffi as ffi
 import ctypes
 from typing import Optional
-from wasmtime import Managed
+from ._managed import Managed
 
 
 class WasmtimeError(Exception, Managed["ctypes._Pointer[ffi.wasmtime_error_t]"]):
