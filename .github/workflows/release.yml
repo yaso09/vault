@@ -143,6 +143,98 @@ jobs:
       contents: write
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get changelog commits
+        id: changelog
+        run: |
+          PREV_TAG=$(git tag --sort=-version:refname | sed -n '2p')
+          if [ -z "$PREV_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%h)" ${{ github.ref_name }})
+          else
+            COMMITS=$(git log --pretty=format:"- %s (%h)" ${PREV_TAG}..${{ github.ref_name }})
+          fi
+          echo "commits<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Generate Turkish release notes with Groq
+        id: ai-notes
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          COMMITS=$(cat << 'COMMITS_EOF'
+          ${{ steps.changelog.outputs.commits }}
+          COMMITS_EOF
+          )
+
+          RESPONSE=$(curl -s https://api.groq.com/openai/v1/chat/completions \
+            -H "Authorization: Bearer $GROQ_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+              --arg commits "$COMMITS" \
+              --arg version "${{ github.ref_name }}" \
+              '{
+                model: "llama-3.3-70b-versatile",
+                max_tokens: 1024,
+                messages: [
+                  {
+                    role: "system",
+                    content: "Sen bir teknik yazarsın. GitHub sürüm notlarını Türkçe ve Markdown formatında yaz. Commitleri anlamlı başlıklar altında grupla (Yeni Özellikler, Hata Düzeltmeleri, İyileştirmeler vb.). Teknik terimleri sadeleştir. Yalnızca sürüm notlarını yaz, başka hiçbir şey ekleme."
+                  },
+                  {
+                    role: "user",
+                    content: "\($version) sürümü için aşağıdaki commitlere dayanarak sürüm notları yaz:\n\n\($commits)"
+                  }
+                ]
+              }'
+            )")
+
+          NOTES=$(echo "$RESPONSE" | jq -r '.choices[0].message.content')
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Update CHANGELOG.md
+        run: |
+          VERSION="${{ github.ref_name }}"
+          DATE=$(date +'%Y-%m-%d')
+          NOTES=$(cat << 'NOTES_EOF'
+          ${{ steps.ai-notes.outputs.notes }}
+          NOTES_EOF
+          )
+
+          NEW_ENTRY="## [$VERSION] - $DATE\n\n$NOTES\n\n---\n"
+
+          if [ ! -f CHANGELOG.md ]; then
+            printf "# Changelog\n\nBu dosya her sürümde otomatik olarak güncellenir.\n\n---\n\n${NEW_ENTRY}" > CHANGELOG.md
+          else
+            # Yeni sürümü mevcut içeriğin başına ekle
+            EXISTING=$(cat CHANGELOG.md)
+            printf "%s\n\n%s" "$EXISTING" "" > /dev/null  # flush
+            awk -v entry="$NEW_ENTRY" '
+              /^---$/ && !inserted {
+                print
+                print ""
+                printf "%s", entry
+                inserted=1
+                next
+              }
+              { print }
+            ' CHANGELOG.md > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
+          fi
+
+      - name: Commit and push CHANGELOG.md
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "docs: ${{ github.ref_name }} sürüm notları CHANGELOG.md'ye eklendi [skip ci]"
+          git push origin HEAD:${{ github.event.repository.default_branch }}
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -164,6 +256,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
+          body: ${{ steps.ai-notes.outputs.notes }}
           draft: false
           prerelease: false
           files: "*.zip"
