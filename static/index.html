@@ -10,6 +10,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Plyr (lokal) -->
+    <link rel="stylesheet" href="/static/plyr.css">
     <!-- Vault CSS -->
     <link rel="stylesheet" href="/static/style.css">
 </head>
@@ -41,7 +43,7 @@
             </ul>
 
             <div class="sidebar-footer">
-                <div class="sidebar-version">v1.0</div>
+                <div class="sidebar-version">v0.5.0</div>
             </div>
         </aside>
 
@@ -231,7 +233,8 @@
                 </div>
             </div>
             <div class="video-container">
-                <video id="vault-video-element" controls autoplay preload="auto">
+                <!-- Plyr video elementi -->
+                <video id="vault-video-element" playsinline>
                     Tarayıcınız HTML5 video oynatmayı desteklemiyor.
                 </video>
             </div>
@@ -240,5 +243,10 @@
 
     <!-- Toast Container -->
     <div class="toast-container" id="toast-container"></div>
+
+    <!-- Plyr JS (lokal) -->
+    <script src="/static/plyr.min.js"></script>
+    <!-- Vault JS -->
+    <script src="/static/app.js"></script>
 </body>
 </html>
