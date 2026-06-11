@@ -1,6 +1,6 @@
 <img src="./assets/banner.svg">
 
-<center><h1>🔒 Vault</h1></center>
+<p style="text-align: center"><h1>🔒 Vault</h1></p>
 
 **Vault**, YouTube videolarını arayıp indirmenize ve indirdiğiniz videoları yerleşik oynatıcıyla izlemenize olanak tanıyan açık kaynaklı, çok platformlu bir uygulamadır. Python ve [Flet](https://flet.dev) çerçevesi üzerine inşa edilmiştir.
 
@@ -72,7 +72,3 @@ uv run flet build linux    # Linux
 ## Lisans
 
 Bu proje **[GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html)** lisansı altında dağıtılmaktadır. Lisansın tam metnini [`LICENSE`](LICENSE) dosyasında bulabilirsiniz.
-
----
-
-> Vault; [yt-dlp](https://github.com/yt-dlp/yt-dlp), [PyTubeFix](https://github.com/JuanBindez/pytubefix), [FFmpeg-WASI](https://github.com/SebastiaanYN/FFmpeg-WASI) ve [Flet](https://flet.dev) açık kaynak projeleri üzerine inşa edilmiştir.
