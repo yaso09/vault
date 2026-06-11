@@ -21,29 +21,29 @@ const state = {
 
 // ── DOM References ────────────────────────────────────────────
 const elements = {
-    pageTitle:              document.getElementById('page-title'),
-    searchQuery:            document.getElementById('search-query'),
-    searchResults:          document.getElementById('search-results'),
-    searchLoading:          document.getElementById('search-loading'),
-    activeDownloadsCount:   document.getElementById('active-downloads-count'),
-    activeDownloadsList:    document.getElementById('active-downloads-list'),
+    pageTitle: document.getElementById('page-title'),
+    searchQuery: document.getElementById('search-query'),
+    searchResults: document.getElementById('search-results'),
+    searchLoading: document.getElementById('search-loading'),
+    activeDownloadsCount: document.getElementById('active-downloads-count'),
+    activeDownloadsList: document.getElementById('active-downloads-list'),
     activeDownloadsSection: document.getElementById('active-downloads-section'),
-    libraryVideosList:      document.getElementById('library-videos-list'),
+    libraryVideosList: document.getElementById('library-videos-list'),
 
     // Channel Overlay
     overlayChannel: document.getElementById('overlay-channel'),
-    chBanner:       document.getElementById('ch-banner'),
-    chAvatar:       document.getElementById('ch-avatar'),
-    chName:         document.getElementById('ch-name'),
-    chVerified:     document.getElementById('ch-verified'),
-    chSubs:         document.getElementById('ch-subs'),
-    chDesc:         document.getElementById('ch-desc'),
-    chVideosList:   document.getElementById('ch-videos-list'),
+    chBanner: document.getElementById('ch-banner'),
+    chAvatar: document.getElementById('ch-avatar'),
+    chName: document.getElementById('ch-name'),
+    chVerified: document.getElementById('ch-verified'),
+    chSubs: document.getElementById('ch-subs'),
+    chDesc: document.getElementById('ch-desc'),
+    chVideosList: document.getElementById('ch-videos-list'),
 
     // Player Overlay
-    overlayPlayer:    document.getElementById('overlay-player'),
+    overlayPlayer: document.getElementById('overlay-player'),
     playerVideoTitle: document.getElementById('player-video-title'),
-    videoElement:     document.getElementById('vault-video-element'),
+    videoElement: document.getElementById('vault-video-element'),
 
     // Toast
     toastContainer: document.getElementById('toast-container')
@@ -66,45 +66,53 @@ if (document.readyState === 'loading') {
 // ── Plyr Kurulum ──────────────────────────────────────────────
 function initPlyr() {
     state.player = new Plyr(elements.videoElement, {
+        // Tüm ekran boyutlarında gösterilecek kontroller (Plyr.io standart yerleşimi)
         controls: [
-            'play-large',
-            'play',
-            'rewind',
-            'fast-forward',
-            'progress',
-            'current-time',
-            'duration',
-            'mute',
-            'volume',
-            'captions',
-            'settings',
-            'fullscreen'
+            'play-large',   // ortadaki büyük play butonu
+            'play',         // sol alttaki play/pause
+            'progress',     // ilerleme çubuğu
+            'current-time', // geçen süre / kalan süre (tıklayarak geçiş yapılabilir)
+            'mute',         // ses aç/kapat
+            'volume',       // ses slider (masaüstü)
+            'captions',     // altyazı
+            'settings',     // hız ve diğer ayarlar (dişli çark)
+            'pip',          // resim içinde resim (Picture-in-Picture)
+            'fullscreen'    // tam ekran
         ],
-        settings: ['quality', 'speed'],
+        settings: ['speed'],
         speed: {
             selected: 1,
-            options: [0.5, 0.75, 1, 1.25, 1.5, 2]
+            options: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
         },
         keyboard: { focused: true, global: false },
         tooltips: { controls: true, seek: true },
-        // Plyr'ın kendi ikonları yerine SVG sprite yok — inline ikonlar kullanılıyor
-        loadSprite: false,
-        // autoplay overlay panelden yönetilir
         autoplay: false,
-        // Dil
+        // Plyr SVG sprite lokal yokken inline SVG kullanır; loadSprite açık kalmalı
+        // ancak path vermeyince CDN'e düşer — false yapıp ikon yerine emoji gösterir
+        // Doğru davranış: true bırak, tarayıcı cache'ler
+        loadSprite: true,
+        iconUrl: '/static/plyr.svg',  // lokal sprite
         i18n: {
-            play:            'Oynat',
-            pause:           'Durdur',
-            mute:            'Sesi Kapat',
-            unmute:          'Sesi Aç',
+            play: 'Oynat',
+            pause: 'Durdur',
+            mute: 'Sesi Kapat',
+            unmute: 'Sesi Aç',
             enterFullscreen: 'Tam Ekran',
-            exitFullscreen:  'Tam Ekrandan Çık',
-            settings:        'Ayarlar',
-            speed:           'Hız',
-            normal:          'Normal',
-            rewind:          'Geri Al',
-            fastForward:     'İleri Sar',
-            seek:            'Konum'
+            exitFullscreen: 'Tam Ekrandan Çık',
+            settings: 'Ayarlar',
+            speed: 'Hız',
+            normal: 'Normal',
+            rewind: '10 Saniye Geri',
+            fastForward: '10 Saniye İleri',
+            seek: 'Konum',
+            seekLabel: '{seektime} konumuna git',
+            played: 'Oynatıldı',
+            buffered: 'Yüklendi',
+            currentTime: 'Geçen süre',
+            duration: 'Toplam süre',
+            volume: 'Ses',
+            enableCaptions: 'Altyazıyı Aç',
+            disableCaptions: 'Altyazıyı Kapat',
         }
     });
 
@@ -121,7 +129,7 @@ function showToast(message, type = 'primary') {
 
     let icon = 'fa-info-circle';
     if (type === 'success') icon = 'fa-check-circle';
-    if (type === 'error')   icon = 'fa-exclamation-circle';
+    if (type === 'error') icon = 'fa-exclamation-circle';
 
     toast.innerHTML = `<i class="fa-solid ${icon}"></i><span>${message}</span>`;
     elements.toastContainer.appendChild(toast);
@@ -197,7 +205,7 @@ async function performSearch() {
 
     try {
         const params = new URLSearchParams({
-            q:    query,
+            q: query,
             type: state.filters.type,
             date: state.filters.date,
             sort: state.filters.sort
@@ -264,7 +272,7 @@ function renderSearchResults(results) {
                     <span class="media-title">${item.title}</span>
                     <span class="media-uploader">${item.uploader} · Oynatma Listesi</span>
                 </div>
-                <div class="download-action-btn" onclick="triggerDownload('${item.url}','${item.title.replace(/'/g,"\\'")}')">
+                <div class="download-action-btn" onclick="triggerDownload('${item.url}','${item.title.replace(/'/g, "\\'")}')">
                     <i class="fa-solid fa-cloud-arrow-down"></i>
                 </div>`;
         } else {
@@ -278,7 +286,7 @@ function renderSearchResults(results) {
                     <span class="media-title">${item.title}</span>
                     <span class="media-uploader">${item.uploader}</span>
                 </div>
-                <div class="download-action-btn" onclick="triggerDownload('${item.url}','${item.title.replace(/'/g,"\\'")}')">
+                <div class="download-action-btn" onclick="triggerDownload('${item.url}','${item.title.replace(/'/g, "\\'")}')">
                     <i class="fa-solid fa-arrow-down"></i>
                 </div>`;
         }
@@ -291,9 +299,9 @@ function renderSearchResults(results) {
 async function triggerDownload(url, title) {
     try {
         const response = await fetch('/api/download', {
-            method:  'POST',
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ url, title })
+            body: JSON.stringify({ url, title })
         });
         if (!response.ok) throw new Error('İndirme başlatılamadı.');
 
@@ -355,17 +363,17 @@ function renderActiveDownloads(downloads) {
         item.className = 'download-item';
 
         const pct = Math.round((d.progress || 0) * 100);
-        let statusText  = 'Hazırlanıyor...';
+        let statusText = 'Hazırlanıyor...';
         let statusColor = '';
 
         if (d.status === 'downloading') {
             statusText = `%${pct} · ${d.speed || '—'} · Kalan: ${d.eta || '—'}`;
         } else if (d.status === 'finished') {
-            statusText  = 'Tamamlandı';
+            statusText = 'Tamamlandı';
             statusColor = 'color:var(--success);';
         } else if (d.status === 'failed') {
             if (!d.error.includes('exit')) {
-                statusText  = `Hata: ${d.error || 'Bilinmiyor'}`;
+                statusText = `Hata: ${d.error || 'Bilinmiyor'}`;
                 statusColor = 'color:var(--error);';
             }
         }
@@ -418,8 +426,8 @@ function renderLibraryGrid(files) {
         const card = document.createElement('div');
         card.className = 'lib-card';
 
-        const savedMs     = state.playbackPositions[f.filepath] || 0;
-        const posLabel    = savedMs > 0 ? `<span class="lib-meta-sep">·</span>${formatTime(savedMs / 1000)} konumunda` : '';
+        const savedMs = state.playbackPositions[f.filepath] || 0;
+        const posLabel = savedMs > 0 ? `<span class="lib-meta-sep">·</span>${formatTime(savedMs / 1000)} konumunda` : '';
         const progressPct = savedMs > 0 && f.duration
             ? Math.min((savedMs / 1000) / f.duration * 100, 100)
             : 0;
@@ -437,7 +445,7 @@ function renderLibraryGrid(files) {
                 </div>
             </div>
             <div class="lib-actions">
-                <div class="lib-btn-delete" onclick="deleteVideo(event,'${f.filename.replace(/'/g,"\\'")}')">
+                <div class="lib-btn-delete" onclick="deleteVideo(event,'${f.filename.replace(/'/g, "\\'")}')">
                     <i class="fa-solid fa-trash-can"></i>
                 </div>
             </div>`;
@@ -474,29 +482,38 @@ async function playVideo(filename) {
     state.currentPlayingFile = file.filepath;
     elements.playerVideoTitle.textContent = filename.replace(/\.[^/.]+$/, '');
 
-    // Plyr source güncelle
-    state.player.source = {
-        type: 'video',
-        sources: [{
-            src:  `/video/${encodeURIComponent(filename)}`,
-            type: 'video/mp4'
-        }]
-    };
-
     // Overlay aç
     elements.overlayPlayer.classList.add('active');
 
     // Kaydedilmiş pozisyonu geri yükle
     const savedMs = state.playbackPositions[file.filepath] || 0;
 
-    // loadedmetadata'yı bir kere dinle, ardından position restore + play
-    state.player.once('loadedmetadata', () => {
+    state.player.once('ready', () => {
         if (savedMs > 0) {
-            state.player.currentTime = savedMs / 1000;
-            showToast(`${formatTime(savedMs / 1000)} konumundan devam ettiriliyor.`, 'success');
+            // Küçük bir gecikme iframe ve mobil tarayıcılarda senkronizasyon sağlar
+            setTimeout(() => {
+                state.player.currentTime = savedMs / 1000;
+                showToast(`${formatTime(savedMs / 1000)} konumundan devam ettiriliyor.`, 'success');
+
+                // Oynatma işlemini süre değişiminden sonra tetikleyin
+                state.player.play().catch(error => {
+                    console.log("Tarayıcı otomatik oynatmayı engelledi, kullanıcı etkileşimi bekleniyor.");
+                });
+            }, 100);
+        } else {
+            state.player.play().catch(() => { });
         }
-        state.player.play();
     });
+
+
+    // Plyr source güncelle (bu canplay olayını tetikleyecek)
+    state.player.source = {
+        type: 'video',
+        sources: [{
+            src: `/video/${encodeURIComponent(filename)}`,
+            type: 'video/mp4'
+        }]
+    };
 
     // Pozisyon kaydetme döngüsünü başlat (2 sn'de bir)
     if (savePositionInterval) clearInterval(savePositionInterval);
@@ -511,9 +528,9 @@ async function saveCurrentPlaybackPosition() {
 
     try {
         await fetch('/api/library/position', {
-            method:  'POST',
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ filepath: state.currentPlayingFile, position_ms: posMs })
+            body: JSON.stringify({ filepath: state.currentPlayingFile, position_ms: posMs })
         });
         state.playbackPositions[state.currentPlayingFile] = posMs;
     } catch (err) {
@@ -547,7 +564,7 @@ function closePlayer() {
 
 // ── Channel Overlay ───────────────────────────────────────────
 async function openChannelOverlay(url) {
-    state.currentChannelUrl  = url;
+    state.currentChannelUrl = url;
     state.currentChannelSort = 'latest';
 
     document.querySelectorAll('.channel-sort-tab').forEach(t => {
@@ -567,11 +584,11 @@ async function openChannelOverlay(url) {
             elements.chBanner.src = data.banner;
             elements.chBanner.style.display = 'block';
         }
-        elements.chAvatar.src         = data.avatar || '';
+        elements.chAvatar.src = data.avatar || '';
         elements.chName.childNodes[0].textContent = data.name || 'Kanal Adı';
-        elements.chVerified.style.display         = data.is_verified ? 'inline' : 'none';
-        elements.chSubs.textContent               = data.subscribers ? `${data.subscribers} Abone` : '';
-        elements.chDesc.textContent               = data.description || 'Açıklama bulunmuyor.';
+        elements.chVerified.style.display = data.is_verified ? 'inline' : 'none';
+        elements.chSubs.textContent = data.subscribers ? `${data.subscribers} Abone` : '';
+        elements.chDesc.textContent = data.description || 'Açıklama bulunmuyor.';
 
         renderChannelVideos(data.videos || []);
     } catch (err) {
@@ -617,7 +634,7 @@ function renderChannelVideos(videos) {
                 <span class="media-title" style="font-size:12px;">${v.title}</span>
                 <span class="media-uploader">${v.view_count || ''}</span>
             </div>
-            <div class="download-action-btn" onclick="triggerDownload('${v.url}','${v.title.replace(/'/g,"\\'")}')">
+            <div class="download-action-btn" onclick="triggerDownload('${v.url}','${v.title.replace(/'/g, "\\'")}')">
                 <i class="fa-solid fa-arrow-down"></i>
             </div>`;
         elements.chVideosList.appendChild(item);
@@ -627,9 +644,9 @@ function renderChannelVideos(videos) {
 // ── Helpers ───────────────────────────────────────────────────
 function formatBytes(bytes) {
     if (!bytes) return '—';
-    if (bytes < 1024)        return `${bytes} B`;
-    if (bytes < 1048576)     return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1073741824)  return `${(bytes / 1048576).toFixed(1)} MB`;
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1073741824) return `${(bytes / 1048576).toFixed(1)} MB`;
     return `${(bytes / 1073741824).toFixed(2)} GB`;
 }
 
@@ -638,6 +655,6 @@ function formatTime(seconds) {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = Math.floor(seconds % 60);
-    if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-    return `${m}:${String(s).padStart(2,'0')}`;
+    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    return `${m}:${String(s).padStart(2, '0')}`;
 }
