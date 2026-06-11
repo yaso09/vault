@@ -1,6 +1,6 @@
 <img src="./assets/banner.svg">
 
-<p style="text-align: center"><h1>🔒 Vault</h1></p>
+<h1 align="center">🔒 Vault</h1>
 
 **Vault**, YouTube videolarını arayıp indirmenize ve indirdiğiniz videoları yerleşik oynatıcıyla izlemenize olanak tanıyan açık kaynaklı, çok platformlu bir uygulamadır. Python ve [Flet](https://flet.dev) çerçevesi üzerine inşa edilmiştir.
 
