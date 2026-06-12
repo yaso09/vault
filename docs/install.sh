@@ -43,7 +43,7 @@ fi
 mkdir -p "$DEST"
 
 # 3. Build'i indir
-URL="https://github.com/$REPO/releases/download/$TAG/$PLATFORM"
+URL="https://github.com/$REPO/releases/download/$TAG/${PLATFORM}-build-artifact.zip"
 ARCHIVE="/tmp/vault-$PLATFORM.zip"
 echo "  [3/4] İndiriliyor: $URL"
 curl -sL -o "$ARCHIVE" "$URL"

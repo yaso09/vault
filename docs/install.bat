@@ -38,7 +38,7 @@ if exist "%DEST%" (
 mkdir "%DEST%" 2>nul
 
 REM Windows build'ini indir
-set "URL=https://github.com/%REPO%/releases/download/%TAG%/windows"
+set "URL=https://github.com/%REPO%/releases/download/%TAG%/windows-build-artifact.zip"
 set "ARCHIVE=%TEMP%\vault-windows.zip"
 echo  [3/4] Indiriliyor: %URL%
 curl -sL -o "%ARCHIVE%" "%URL%"
