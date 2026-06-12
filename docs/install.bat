@@ -68,11 +68,22 @@ if exist "%DEST%\vault.exe" (
     echo  Masaustune kisa yol eklendi.
 )
 
+REM PATH'e ekle
+setx PATH "%DEST%;%PATH%" >nul 2>nul
+echo.
+echo  PATH'e eklendi: %DEST%
+echo  (Degisiklik yeni terminal pencerelerinde gecerli olacaktir.)
+
 echo.
 echo  ^|======================================^|
 echo  ^|         KURULUM TAMAMLANDI           ^|
 echo  ^|======================================^|
 echo.
 echo  Konum: %DEST%
+echo.
+echo  Kullanim:
+echo    vault run --desktop
+echo    vault download ^<URL^>
+echo    vault search ^<sorgu^>
 echo.
 pause
