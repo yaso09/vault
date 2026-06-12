@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vault — Video Arşivi</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -438,6 +439,7 @@
         <ul class="nav-links">
             <li><a href="#indir">İndir</a></li>
             <li><a href="#ozellikler">Özellikler</a></li>
+            <li><a href="dokuman.html"><i class="fa-solid fa-book"></i> Dökümantasyon</a></li>
             <li><a href="#nasil">Nasıl Çalışır</a></li>
             <li><a href="https://github.com/yaso09/vault" target="_blank"><i class="fa-brands fa-github"></i> GitHub</a></li>
         </ul>
@@ -671,37 +673,36 @@
 </footer>
 
 <script>
-    (function() {
-        const tabs = document.querySelectorAll('.dl-tab');
-        const panels = document.querySelectorAll('.dl-panel');
+(function() {
+    const tabs = document.querySelectorAll('.dl-tab');
+    const panels = document.querySelectorAll('.dl-panel');
 
-        // Platform tespiti ile varsayılan sekmeyi ayarla
-        const ua = navigator.userAgent.toLowerCase();
-        let defaultPlatform = 'windows';
-        if (/macintosh|mac os x/.test(ua)) defaultPlatform = 'macos';
-        else if (/linux/.test(ua) && !/android/.test(ua)) defaultPlatform = 'linux';
-        else if (/android/.test(ua)) defaultPlatform = 'android';
-        else if (/iphone|ipad|ipod/.test(ua)) defaultPlatform = 'ios';
+    const ua = navigator.userAgent.toLowerCase();
+    let defaultPlatform = 'windows';
+    if (/macintosh|mac os x/.test(ua)) defaultPlatform = 'macos';
+    else if (/linux/.test(ua) && !/android/.test(ua)) defaultPlatform = 'linux';
+    else if (/android/.test(ua)) defaultPlatform = 'android';
+    else if (/iphone|ipad|ipod/.test(ua)) defaultPlatform = 'ios';
 
-        tabs.forEach(t => t.classList.remove('active'));
-        panels.forEach(p => p.classList.remove('active'));
+    tabs.forEach(t => t.classList.remove('active'));
+    panels.forEach(p => p.classList.remove('active'));
 
-        const activeTab = document.querySelector(`.dl-tab[data-platform="${defaultPlatform}"]`);
-        const activePanel = document.querySelector(`.dl-panel[data-platform="${defaultPlatform}"]`);
-        if (activeTab) activeTab.classList.add('active');
-        if (activePanel) activePanel.classList.add('active');
+    const activeTab = document.querySelector(`.dl-tab[data-platform="${defaultPlatform}"]`);
+    const activePanel = document.querySelector(`.dl-panel[data-platform="${defaultPlatform}"]`);
+    if (activeTab) activeTab.classList.add('active');
+    if (activePanel) activePanel.classList.add('active');
 
-        tabs.forEach(tab => {
-            tab.addEventListener('click', function() {
-                const platform = this.getAttribute('data-platform');
-                tabs.forEach(t => t.classList.remove('active'));
-                panels.forEach(p => p.classList.remove('active'));
-                this.classList.add('active');
-                const panel = document.querySelector(`.dl-panel[data-platform="${platform}"]`);
-                if (panel) panel.classList.add('active');
-            });
+    tabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+            const platform = this.getAttribute('data-platform');
+            tabs.forEach(t => t.classList.remove('active'));
+            panels.forEach(p => p.classList.remove('active'));
+            this.classList.add('active');
+            const panel = document.querySelector(`.dl-panel[data-platform="${platform}"]`);
+            if (panel) panel.classList.add('active');
         });
-    })();
+    });
+})();
 </script>
 
 </body>

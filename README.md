@@ -86,9 +86,10 @@
 
 ```
 vault/
-├── main.py                    # Giriş noktası — CLI argümanları, otomatik port seçimi
+├── main.py                    # Giriş noktası — typer CLI, otomatik port seçimi
 │
 ├── utils/
+│   ├── cli.py                 # Typer CLI — run, download, search, info komutları
 │   ├── search_engine.py       # YouTube arama motoru — yt-dlp, SP filtre kodları, sonuç işleme
 │   ├── downloader.py          # İndirme yöneticisi — 2 aşamalı indirme, ilerleme takibi, FFmpeg çağrısı
 │   ├── ffmpeg.py              # WebAssembly FFmpeg sarmalayıcı — wasmtime ile WASM yürütme
@@ -215,6 +216,32 @@ Android/iOS'te `flet-webview` yoksa otomatik olarak `--web` moduna düşer.
 chmod +x build-ffmpeg.sh
 ./build-ffmpeg.sh               # FFmpeg-WASI alt modülünü günceller ve binaries/ klasörüne kopyalar
 ```
+
+---
+
+## 💻 CLI Kullanımı
+
+Vault, komut satırından tam kontrol için `typer` tabanlı bir CLI sunar.
+
+### Global Seçenekler
+
+| Bayrak | Varsayılan | Açıklama |
+|--------|-----------|----------|
+| `-p, --port` | 8000 | Sunucu portu |
+| `--verbose` | — | Detaylı log çıktısı |
+
+### Komutlar
+
+```bash
+python main.py run --desktop          # Sunucu + tarayıcı
+python main.py run --web              # Sadece sunucu
+python main.py run --mobile           # Sunucu + Flet WebView
+python main.py download <URL>         # Video indir
+python main.py search <sorgu>         # YouTube'da ara
+python main.py info <URL>             # Video bilgisi göster
+```
+
+Detaylı kullanım: [`docs/cli.md`](docs/cli.md)
 
 ---
 

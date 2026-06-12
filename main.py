@@ -1,5 +1,4 @@
 import os
-import argparse
 import sys
 import threading
 import time
@@ -261,69 +260,36 @@ def detect_mode() -> str:
         return "mobile"
     return "desktop"
 
-# ── Main Entry ─────────────────────────────────────────────────────
+# ── Server Runner ──────────────────────────────────────────────────
 
-def main():
-    parser = argparse.ArgumentParser(description="Vault - Video Archive App (FastAPI + HTML)")
-    parser.add_argument("--web", action="store_true", help="Launch live on localhost")
-    parser.add_argument("--desktop", action="store_true", help="Launch live and open in default web browser")
-    parser.add_argument("--mobile", action="store_true", help="Launch live and open as Flet WebView mobile version")
-    
-    args = parser.parse_args()
-    
-    # Determine which mode to run
-    mode = None
-    if args.web:
-        mode = "web"
-    elif args.desktop:
-        mode = "desktop"
-    elif args.mobile:
-        mode = "mobile"
-    else:
-        # Default: auto-detect by OS
-        mode = detect_mode()
-        print(f"Platform algılandı. Varsayılan başlatma modu: --{mode}")
-
-    # Set up host and port
-    host = "127.0.0.1"
-    port = 8000
-    
-    # Solve port conflicts if 8000 is occupied
-    while is_port_in_use(port):
-        port += 1
-        
+def run_server(host: str = "127.0.0.1", port: int = 8000, mode: str = "web"):
+    """Start the FastAPI server on the given host:port in the given mode."""
     url = f"http://{host}:{port}"
-    
     print(f"Vault backend server başlatılıyor: {url}")
     start_server_in_thread(host, port)
-    
-    # Wait for the FastAPI server to initialize fully
     time.sleep(0.8)
 
     if mode == "web":
         print(f"Uygulama yayında! Lütfen tarayıcınızda açın: {url}")
-        # Keep main thread alive
         try:
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
             print("\nVault durduruldu.")
-            
+
     elif mode == "desktop":
         print(f"Uygulama varsayılan tarayıcıda açılıyor: {url}")
         try:
             webbrowser.open(url)
         except Exception as e:
             print(f"Tarayıcı açılamadı: {e}")
-        # Keep main thread alive
         try:
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
             print("\nVault durduruldu.")
-                
+
     elif mode == "mobile":
-        # Dynamic import of Flet elements to ensure headless environments don't crash
         try:
             import flet as ft
             try:
@@ -343,7 +309,7 @@ def main():
             return
 
         print("Flet WebView (Mobil Görünüm) açılıyor...")
-        
+
         def run_flet_app(page: ft.Page):
             page.title = "Vault Mobile"
             page.padding = 0
@@ -351,20 +317,18 @@ def main():
             page.window.width = 440
             page.window.height = 840
             page.window.resizable = True
-            
+
             if HAS_FLET_WEBVIEW:
-                wv = fwv.WebView(
-                    expand=True
-                )
+                wv = fwv.WebView(expand=True)
                 page.add(ft.SafeArea(content=wv, expand=True))
-                
+
                 async def load_webview():
                     try:
                         await wv.set_javascript_mode(fwv.JavaScriptMode.UNRESTRICTED)
                         await wv.load_request(f"{url}/?webview=flet")
                     except Exception as ex:
                         print(f"WebView yükleme hatası: {ex}")
-                
+
                 page.run_task(load_webview)
             else:
                 page.add(ft.SafeArea(
@@ -382,7 +346,7 @@ def main():
                         expand=True
                     ), expand=True
                 ))
-                
+
         try:
             ft.app(target=run_flet_app)
         except Exception as e:
@@ -394,5 +358,19 @@ def main():
             except KeyboardInterrupt:
                 pass
 
+
+def run_autodetect(port: int = 8000):
+    """Legacy entry: auto-detect platform and run server."""
+    mode = detect_mode()
+    print(f"Platform algılandı. Varsayılan başlatma modu: --{mode}")
+
+    host = "127.0.0.1"
+    while is_port_in_use(port):
+        port += 1
+
+    run_server(host=host, port=port, mode=mode)
+
+
 if __name__ == "__main__":
-    main()
+    from utils.cli import app
+    app()

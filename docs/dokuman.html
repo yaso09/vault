@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vault — Dökümantasyon</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #080808;
+            --bg-surface: #0f0f0f;
+            --bg-card: #141414;
+            --bg-hover: #1a1a1a;
+            --border: #1e1e1e;
+            --border-mid: #2a2a2a;
+            --accent: #c8952e;
+            --accent-lt: #daa84a;
+            --accent-dim: rgba(200, 149, 46, 0.10);
+            --accent-glow: rgba(200, 149, 46, 0.22);
+            --text-pri: #ede8df;
+            --text-sec: #7a7870;
+            --text-dim: #3e3d38;
+            --font-display: 'Barlow Condensed', sans-serif;
+            --font-body: 'DM Sans', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            --radius-sm: 3px;
+            --radius-md: 5px;
+            --radius-lg: 8px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body {
+            background-color: var(--bg);
+            color: var(--text-pri);
+            font-family: var(--font-body);
+            font-size: 15px;
+            -webkit-font-smoothing: antialiased;
+        }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 2px; }
+        .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+
+        nav {
+            position: fixed; top: 0; left: 0; right: 0;
+            background: rgba(8,8,8,0.85);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            z-index: 100;
+            height: 56px;
+            display: flex; align-items: center;
+        }
+        nav .container {
+            width: 100%;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .nav-logo {
+            display: flex; align-items: center; gap: 10px;
+            font-family: var(--font-display);
+            font-size: 20px; font-weight: 800;
+            letter-spacing: 0.08em;
+            color: var(--text-pri);
+            text-decoration: none;
+        }
+        .nav-logo .logo-box {
+            width: 30px; height: 30px;
+            background: var(--accent);
+            border-radius: var(--radius-sm);
+            display: flex; align-items: center; justify-content: center;
+            color: #1a0e00; font-size: 13px;
+        }
+        .nav-links { display: flex; gap: 24px; list-style: none; }
+        .nav-links a {
+            color: var(--text-sec);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        .nav-links a:hover { color: var(--accent-lt); }
+        .nav-links a.active { color: var(--accent-lt); }
+
+        section { padding: 64px 0; }
+        .section-label {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 0.14em;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+        }
+        .section-label .dot {
+            display: inline-block;
+            width: 5px; height: 5px;
+            background: var(--accent);
+            border-radius: 50%;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        .section-title {
+            font-family: var(--font-display);
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            margin-bottom: 36px;
+        }
+
+        .dl-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .dl-tab {
+            padding: 9px 20px;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-family: var(--font-display);
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            color: var(--text-sec);
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .dl-tab:hover { border-color: var(--border-mid); color: var(--text-pri); }
+        .dl-tab.active {
+            background: var(--accent-dim);
+            border-color: var(--accent);
+            color: var(--accent-lt);
+        }
+        .dl-tab i { margin-right: 6px; }
+
+        .doc-content {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 32px 28px;
+            line-height: 1.8;
+            font-size: 14px;
+            color: var(--text-pri);
+        }
+        .doc-content h1 { display: none; }
+        .doc-content h2 {
+            font-family: var(--font-display);
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            margin: 32px 0 12px;
+            color: var(--accent-lt);
+        }
+        .doc-content h2:first-of-type { margin-top: 0; }
+        .doc-content h3 {
+            font-family: var(--font-display);
+            font-size: 17px;
+            font-weight: 700;
+            margin: 24px 0 8px;
+            color: var(--text-pri);
+        }
+        .doc-content p { margin: 0 0 14px; color: var(--text-sec); }
+        .doc-content a { color: var(--accent-lt); }
+        .doc-content a:hover { text-decoration: underline; }
+        .doc-content strong { color: var(--text-pri); }
+        .doc-content code {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            background: var(--bg-card);
+            color: var(--accent-lt);
+            padding: 2px 7px;
+            border-radius: 3px;
+            border: 1px solid var(--border);
+        }
+        .doc-content pre {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 16px 18px;
+            margin: 0 0 16px;
+            overflow-x: auto;
+        }
+        .doc-content pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            color: var(--text-pri);
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        .doc-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0 0 16px;
+            font-size: 13px;
+        }
+        .doc-content th {
+            font-family: var(--font-display);
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-align: left;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--accent);
+            color: var(--accent-lt);
+        }
+        .doc-content td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-sec);
+        }
+        .doc-content tr:last-child td { border-bottom: none; }
+        .doc-content ul, .doc-content ol { margin: 0 0 14px; padding-left: 24px; color: var(--text-sec); }
+        .doc-content li { margin-bottom: 4px; }
+        .doc-content hr {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 24px 0;
+        }
+        .doc-content blockquote {
+            border-left: 3px solid var(--accent);
+            padding: 10px 16px;
+            margin: 0 0 16px;
+            background: var(--accent-dim);
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+            color: var(--text-sec);
+        }
+        .doc-loading {
+            text-align: center;
+            padding: 48px 0;
+            color: var(--text-dim);
+            font-family: var(--font-mono);
+            font-size: 12px;
+        }
+
+        footer {
+            padding: 28px 0;
+            text-align: center;
+            border-top: 1px solid var(--border);
+        }
+        footer p { font-size: 12px; color: var(--text-dim); }
+        footer a {
+            color: var(--text-sec);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        footer a:hover { color: var(--accent-lt); }
+
+        @media (max-width: 768px) {
+            .section-title { font-size: 24px; }
+            .nav-links { display: none; }
+            .doc-content { padding: 20px 16px; }
+            .doc-content table { font-size: 12px; }
+            .doc-content th, .doc-content td { padding: 6px 8px; }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <div class="container">
+        <a href="index.html" class="nav-logo">
+            <div class="logo-box"><i class="fa-solid fa-vault"></i></div>
+            VAULT
+        </a>
+        <ul class="nav-links">
+            <li><a href="index.html#indir">İndir</a></li>
+            <li><a href="index.html#ozellikler">Özellikler</a></li>
+            <li><a href="dokuman.html" class="active"><i class="fa-solid fa-book"></i> Dökümantasyon</a></li>
+            <li><a href="index.html#nasil">Nasıl Çalışır</a></li>
+            <li><a href="https://github.com/yaso09/vault" target="_blank"><i class="fa-brands fa-github"></i> GitHub</a></li>
+        </ul>
+    </div>
+</nav>
+
+<section>
+    <div class="container">
+        <div class="section-label"><span class="dot"></span>DÖKÜMANTASYON</div>
+        <h2 class="section-title">Belgeler ve Referans</h2>
+
+        <div class="dl-tabs" id="docTabs">
+            <div class="dl-tab active" data-doc="cli"><i class="fa-solid fa-terminal"></i> CLI</div>
+            <div class="dl-tab" data-doc="api"><i class="fa-solid fa-plug"></i> API</div>
+        </div>
+
+        <div class="doc-content" id="docContent">
+            <div class="doc-loading"><i class="fa-solid fa-spinner fa-spin"></i> Yükleniyor...</div>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <div class="container">
+        <p>
+            <a href="https://github.com/yaso09/vault" target="_blank"><i class="fa-brands fa-github"></i> yaso09/vault</a>
+            &nbsp;·&nbsp;
+            <a href="https://github.com/yaso09/vault/releases" target="_blank"><i class="fa-solid fa-download"></i> Releases</a>
+            &nbsp;·&nbsp;
+            <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank">GNU GPL v3.0</a>
+        </p>
+        <p style="margin-top: 6px;">Vault &copy; 2026 Yasir Eymen</p>
+    </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/15.0.7/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>
+(function() {
+    const docTabs = document.querySelectorAll('#docTabs .dl-tab');
+    const docContent = document.getElementById('docContent');
+    const DOC_FILES = { cli: 'cli.md', api: 'api.md' };
+    let currentDoc = null;
+
+    async function loadDoc(name) {
+        if (name === currentDoc) return;
+        currentDoc = name;
+        docContent.innerHTML = '<div class="doc-loading"><i class="fa-solid fa-spinner fa-spin"></i> Yükleniyor...</div>';
+
+        try {
+            const resp = await fetch(DOC_FILES[name]);
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const md = await resp.text();
+            const html = marked.parse(md, { breaks: true });
+            docContent.innerHTML = html;
+            docContent.querySelectorAll('pre code').forEach(block => {
+                hljs.highlightElement(block);
+            });
+        } catch (e) {
+            docContent.innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:24px;">Döküman yüklenemedi: ' + e.message + '</p>';
+        }
+    }
+
+    docTabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+            docTabs.forEach(t => t.classList.remove('active'));
+            this.classList.add('active');
+            loadDoc(this.dataset.doc);
+        });
+    });
+
+    loadDoc('cli');
+})();
+</script>
+
+</body>
+</html>
