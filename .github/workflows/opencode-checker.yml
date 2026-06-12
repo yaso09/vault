@@ -1,0 +1,32 @@
+name: Check For Issues
+
+on:
+  schedule:
+    - cron: "0 * * * *" # Her saat başı
+  workflow_dispatch:
+
+jobs:
+  opencode:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Run OpenCode
+        uses: anomalyco/opencode/github@latest
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        with:
+          model: opencode/qwen3.6-plus-free
+          prompt: |
+            Review the codebase for any TODO comments and create a summary.
+            If you find issues worth addressing, open an issue to track them.
