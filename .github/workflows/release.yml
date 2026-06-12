@@ -157,43 +157,27 @@ jobs:
           else
             COMMITS=$(git log --pretty=format:"- %s (%h)" ${PREV_TAG}..${{ github.ref_name }})
           fi
-          echo "commits<<EOF" >> $GITHUB_OUTPUT
-          echo "$COMMITS" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          cat > /tmp/release-commits.md << 'EOF'
+          ${{ github.ref_name }} sürümü commit'leri:
+          $COMMITS
+          EOF
 
-      - name: Generate Turkish release notes with Groq
-        id: ai-notes
+      - name: Generate release notes with OpenCode
+        uses: anomalyco/opencode/github@latest
         env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        with:
+          model: opencode/qwen3.6-plus-free
+          prompt: |
+            /tmp/release-commits.md dosyasındaki commit'lere dayanarak Türkçe sürüm notları oluştur.
+            Commitleri anlamlı başlıklar altında grupla (Yeni Özellikler, Hata Düzeltmeleri, İyileştirmeler vb.).
+            Teknik terimleri sadeleştir. Yalnızca sürüm notlarını yaz, başka hiçbir şey ekleme.
+            Sonucu /tmp/release-notes.md dosyasına yaz.
+
+      - name: Read generated release notes
+        id: ai-notes
         run: |
-          COMMITS=$(cat << 'COMMITS_EOF'
-          ${{ steps.changelog.outputs.commits }}
-          COMMITS_EOF
-          )
-
-          RESPONSE=$(curl -s https://api.groq.com/openai/v1/chat/completions \
-            -H "Authorization: Bearer $GROQ_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d "$(jq -n \
-              --arg commits "$COMMITS" \
-              --arg version "${{ github.ref_name }}" \
-              '{
-                model: "llama-3.3-70b-versatile",
-                max_tokens: 1024,
-                messages: [
-                  {
-                    role: "system",
-                    content: "Sen bir teknik yazarsın. GitHub sürüm notlarını Türkçe ve Markdown formatında yaz. Commitleri anlamlı başlıklar altında grupla (Yeni Özellikler, Hata Düzeltmeleri, İyileştirmeler vb.). Teknik terimleri sadeleştir. Yalnızca sürüm notlarını yaz, başka hiçbir şey ekleme."
-                  },
-                  {
-                    role: "user",
-                    content: "\($version) sürümü için aşağıdaki commitlere dayanarak sürüm notları yaz:\n\n\($commits)"
-                  }
-                ]
-              }'
-            )")
-
-          NOTES=$(echo "$RESPONSE" | jq -r '.choices[0].message.content')
+          NOTES=$(cat /tmp/release-notes.md)
           echo "notes<<EOF" >> $GITHUB_OUTPUT
           echo "$NOTES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
