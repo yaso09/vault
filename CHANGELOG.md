@@ -4,6 +4,21 @@ Bu dosya her sürümde otomatik olarak güncellenir.
 
 ---
 
+## [v0.5.0] - 2026-06-12
+
+## v0.5.0 Sürüm Notları
+
+### Yeni Özellikler
+- Plyr.io video oynatıcı entegrasyonu ve tasarım iyileştirmeleri eklendi
+- Video oynatıcı Plyr ile değiştirildi
+
+### Dokümantasyon İyileştirmeleri
+- README güncellendi
+- README'de başlıklar merkezileştirildi
+- v0.4.0 sürüm notları CHANGELOG.md'ye eklendi
+
+---
+
 ## [v0.4.0] - 2026-06-08
 
 # v0.4.0 Sürüm Notları
