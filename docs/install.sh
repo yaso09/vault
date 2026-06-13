@@ -256,95 +256,140 @@ get_base_dir() {
 format_size() {
     local bytes=$1
     if [[ $bytes -ge 1073741824 ]]; then
-        echo "$(echo "scale=1; $bytes/1073741824" | bc) GB"
+        awk -v b="$bytes" 'BEGIN { printf "%.1f GB\n", b/1073741824 }' 2>/dev/null || echo "$((bytes/1073741824)) GB"
     elif [[ $bytes -ge 1048576 ]]; then
-        echo "$(echo "scale=1; $bytes/1048576" | bc) MB"
+        awk -v b="$bytes" 'BEGIN { printf "%.1f MB\n", b/1048576 }' 2>/dev/null || echo "$((bytes/1048576)) MB"
     elif [[ $bytes -ge 1024 ]]; then
-        echo "$(echo "scale=1; $bytes/1024" | bc) KB"
+        awk -v b="$bytes" 'BEGIN { printf "%.1f KB\n", b/1024 }' 2>/dev/null || echo "$((bytes/1024)) KB"
     else
-        echo "${bytes}B"
+        echo "${bytes} B"
     fi
 }
+
+format_eta() {
+    local seconds=$1
+    if (( seconds <= 0 )); then
+        echo ""
+    elif (( seconds < 60 )); then
+        echo "~${seconds}s kaldı"
+    elif (( seconds < 3600 )); then
+        echo "~$((seconds / 60))dk kaldı"
+    else
+        echo "~$((seconds / 3600))sa kaldı"
+    fi
+}
+
+draw_install_screen() {
+    local title=$1
+    shift
+    local steps=("$@")
+    N_STEPS=${#steps[@]}
+
+    clear_screen
+    draw_box_top
+    draw_title "$title"
+    draw_separator
+    draw_blank
+
+    for ((i=0; i<N_STEPS; i++)); do
+        local label="[$(($i+1))/$N_STEPS]  ${steps[$i]}"
+        local step_text
+        step_text=$(printf "%-43s" "$label")
+        printf "  │  ${DIM}·${RESET}  %s│\n" "$step_text"
+    done
+
+    draw_blank
+    draw_box_bottom
+    # Print two blank lines for progress bar and return to anchor line
+    printf "\n\n\033[2A"
+}
+
+set_step_status() {
+    local index=$1
+    local status=$2
+    local spinner_char=${3:-}
+
+    # Save cursor (anchor line)
+    printf "\033[s"
+
+    # Go to step line: from the anchor line, we go up $((N_STEPS - index + 2)) lines
+    local up_lines=$((N_STEPS - index + 2))
+    printf "\033[%dA" "$up_lines"
+
+    # Go to column 6 (where the dot is)
+    printf "\r\033[5C"
+
+    # Print status icon
+    case "$status" in
+        pending) printf "${DIM}·${RESET}" ;;
+        running) printf "${CYAN}▶${RESET}" ;;
+        done)    printf "${GREEN}✓${RESET}" ;;
+        error)   printf "${RED}✗${RESET}" ;;
+        spinner) printf "${CYAN}%s${RESET}" "$spinner_char" ;;
+    esac
+
+    # Restore cursor (back to anchor line)
+    printf "\033[u"
+}
+
+draw_progress_bar() {
+    local percent=$1
+    local received=$2
+    local total=$3
+    local speed=$4
+    local eta=$5
+
+    local bar_width=34
+    local line1=""
+    local line2=""
+
+    if (( percent >= 0 )); then
+        local filled=$(( bar_width * percent / 100 ))
+        local empty=$(( bar_width - filled ))
+        local filled_bar=""
+        local empty_bar=""
+        if (( filled > 0 )); then filled_bar=$(printf '█%.0s' $(seq 1 $filled 2>/dev/null)); fi
+        if (( empty > 0 )); then empty_bar=$(printf '░%.0s' $(seq 1 $empty 2>/dev/null)); fi
+        line1="  ${GREEN}${filled_bar}${RESET}${DIM}${empty_bar}${RESET} $(printf "%3d" $percent)%"
+    else
+        # Indeterminate animation
+        local pos=$(( ( $(date +%s%N 2>/dev/null || date +%s) / 80000000 ) % bar_width ))
+        local chars=()
+        for ((k=0; k<bar_width; k++)); do chars+=(" "); done
+        for ((k=0; k<6; k++)); do chars[$(( (pos + k) % bar_width ))]="█"; done
+        local bar_str=""
+        for c in "${chars[@]}"; do bar_str+="$c"; done
+        line1="  ${CYAN}${bar_str}${RESET}  ···"
+    fi
+
+    local rec_str
+    local tot_str
+    rec_str=$(format_size "$received")
+    if (( total > 0 )); then
+        tot_str=$(format_size "$total")
+    else
+        tot_str="?"
+    fi
+
+    line2="  ${DIM}${rec_str} / ${tot_str}${RESET}"
+    if [[ -n "$speed" && "$speed" -gt 0 ]]; then
+        local speed_str
+        speed_str=$(format_size "$speed")
+        line2+="  •  ${CYAN}${speed_str}/s${RESET}"
+    fi
+    if [[ -n "$eta" ]]; then
+        line2+="  ${DIM}${eta}${RESET}"
+    fi
+
+    # Save cursor, move down, print line 1, move down, print line 2, restore cursor
+    printf "\033[s"
+    printf "\033[1B\r%-72s\r%s" "" "$line1"
+    printf "\033[1B\r%-72s\r%s" "" "$line2"
+    printf "\033[u"
+}
+
 
 # ── Download & Install ─────────────────────────────────────────
-download_file() {
-    local url=$1
-    local dest=$2
-    echo "  İndiriliyor..."
-    curl -L --progress-bar -o "$dest" "$url"
-    local rc=$?
-    echo ""
-    return $rc
-}
-
-install_artifact() {
-    local archive=$1
-    local version_label=$2
-    local platform=$3
-
-    local base_dir
-    base_dir=$(get_base_dir "$platform")
-    local dest="$base_dir/$version_label"
-
-    echo "  [1/4] Hedef hazırlanıyor..."
-    if [[ -d "$base_dir" ]]; then
-        rm -rf "$base_dir" 2>/dev/null || true
-    fi
-    mkdir -p "$base_dir" 2>/dev/null || {
-        echo "  ${RED}Hata: $base_dir yazılamıyor.${RESET}"
-        return 1
-    }
-
-    echo "  [2/4] Çıkartılıyor..."
-    local tmp_dir
-    tmp_dir=$(mktemp -d 2>/dev/null) || tmp_dir="/tmp/vault-extract-$$"
-    mkdir -p "$tmp_dir"
-
-    if command -v unzip &>/dev/null; then
-        unzip -o "$archive" -d "$tmp_dir" 2>/dev/null || true
-    else
-        tar -xf "$archive" -C "$tmp_dir" 2>/dev/null || true
-    fi
-    rm -f "$archive"
-
-    mkdir -p "$dest"
-    local inner
-    inner=$(ls -d "$tmp_dir"/*/ 2>/dev/null | head -1)
-    if [[ -n "$inner" ]]; then
-        mv "$inner"/* "$dest"/ 2>/dev/null || true
-    else
-        mv "$tmp_dir"/* "$dest"/ 2>/dev/null || true
-    fi
-    rm -rf "$tmp_dir"
-
-    echo "  [3/4] PATH güncelleniyor..."
-    update_path "$dest" "$platform"
-
-    if [[ "$platform" == "macos" && -d "$dest/Vault.app" ]]; then
-        cp -R "$dest/Vault.app" "/Applications/Vault.app" 2>/dev/null && \
-        echo "  /Applications/Vault.app kopyalandı."
-    fi
-
-    if [[ "$platform" == "windows" ]]; then
-        local exe
-        exe=$(ls "$dest"/vault.exe "$dest"/Vault.exe 2>/dev/null | head -1) || true
-        if [[ -n "$exe" && -n "${USERPROFILE:-}" ]]; then
-            echo "  Masaüstü kısayolu: $USERPROFILE\\Desktop\\Vault.lnk"
-        fi
-    fi
-
-    echo ""
-    echo ""
-    echo "  ┌──────────────────────────────────────┐"
-    echo "  │         KURULUM TAMAMLANDI           │"
-    echo "  └──────────────────────────────────────┘"
-    beep success
-    echo ""
-    echo "  Konum: $dest"
-    echo "  Kullanım: vault run --desktop"
-    echo ""
-}
-
 update_path() {
     local dest=$1
     local platform=$2
@@ -372,8 +417,6 @@ update_path() {
             echo "" >> "$profile"
             echo "# Vault" >> "$profile"
             echo "$line" >> "$profile"
-            echo "  PATH'e eklendi: $dest"
-            echo "  (Değişiklik yeni terminal pencerelerinde geçerli olacaktır.)"
         fi
     fi
 
@@ -391,11 +434,15 @@ do_install() {
     local archive
     archive=$(mktemp 2>/dev/null) || archive="/tmp/vault-install-$$.zip"
 
-    echo ""
-    draw_box_top
-    printf "  │${BOLD}%-${IW}s${RESET}│\n" "  $version_label Kuruluyor..."
-    draw_box_bottom
-    echo ""
+    local steps=(
+        "Bağlantı kuruluyor  "
+        "Dosyalar indiriliyor"
+        "Arşiv çıkartılıyor  "
+        "PATH güncelleniyor  "
+    )
+
+    draw_install_screen "  ⚙  $version_label — $platform" "${steps[@]}"
+    set_step_status 0 "running"
 
     if [[ "$source_type" == "release" ]]; then
         url="https://github.com/$REPO/releases/download/$version_label/${platform}-build-artifact.zip"
@@ -403,19 +450,159 @@ do_install() {
         url="$API_BASE/actions/artifacts/$art_id/zip"
     fi
 
-    curl -L --progress-bar -o "$archive" "$url"
+    # Connection test & size query
+    local auth_header=()
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+        auth_header=(-H "Authorization: Bearer $GITHUB_TOKEN")
+    fi
+
+    local total_bytes
+    total_bytes=$(curl -sIL "${auth_header[@]}" "$url" | grep -i '^content-length:' | tail -n1 | awk '{print $2}' | tr -d '\r')
+
+    set_step_status 0 "done"
+    set_step_status 1 "running"
+
+    # Start download in background
+    curl -sL "${auth_header[@]}" "$url" -o "$archive" &
+    local curl_pid=$!
+
+    local received=0
+    local last_received=0
+    local last_time
+    last_time=$(date +%s)
+    local speed=0
+    local start_time
+    start_time=$(date +%s)
+
+    while kill -0 "$curl_pid" 2>/dev/null; do
+        if [[ -f "$archive" ]]; then
+            received=$(wc -c < "$archive")
+        else
+            received=0
+        fi
+        local now
+        now=$(date +%s)
+        local elapsed=$((now - last_time))
+        if (( elapsed >= 1 )); then
+            speed=$(( (received - last_received) / elapsed ))
+            last_received=$received
+            last_time=$now
+        fi
+
+        local percent=-1
+        if [[ -n "$total_bytes" && "$total_bytes" -gt 0 ]]; then
+            percent=$(( received * 100 / total_bytes ))
+        fi
+        local eta=""
+        if [[ $speed -gt 0 && -n "$total_bytes" && $received -lt $total_bytes ]]; then
+            local remaining=$((total_bytes - received))
+            local eta_seconds=$((remaining / speed))
+            eta=$(format_eta "$eta_seconds")
+        fi
+
+        draw_progress_bar "$percent" "$received" "$total_bytes" "$speed" "$eta"
+        sleep 0.2
+    done
+    wait "$curl_pid"
     local rc=$?
-    echo ""
 
     if [[ $rc -ne 0 || ! -s "$archive" ]]; then
+        set_step_status 1 "error"
         beep error
-        echo "  ${RED}İndirme başarısız.${RESET}"
+        # Go below the box & progress bar area
+        printf "\033[3B\r"
+        echo "  ${RED}İndirme başarısız. URL veya token'ı kontrol edin.${RESET}"
         rm -f "$archive"
-        sleep 2
+        sleep 2.5
         return
     fi
 
-    install_artifact "$archive" "$version_label" "$platform"
+    # Complete progress bar at 100%
+    draw_progress_bar 100 "$received" "$received" "" "tamamlandı"
+    set_step_status 1 "done"
+    set_step_status 2 "running"
+
+    # Extract Setup
+    local base_dir
+    base_dir=$(get_base_dir "$platform")
+    local dest="$base_dir/$version_label"
+
+    if [[ -d "$base_dir" ]]; then
+        rm -rf "$base_dir" 2>/dev/null || true
+    fi
+    mkdir -p "$base_dir" 2>/dev/null || {
+        set_step_status 2 "error"
+        beep error
+        printf "\033[3B\r"
+        echo "  ${RED}Hata: $base_dir dizini oluşturulamıyor.${RESET}"
+        rm -f "$archive"
+        sleep 2.5
+        return
+    }
+
+    local tmp_dir
+    tmp_dir=$(mktemp -d 2>/dev/null) || tmp_dir="/tmp/vault-extract-$$"
+    mkdir -p "$tmp_dir"
+
+    # Background extraction with spinner
+    (
+        if command -v unzip &>/dev/null; then
+            unzip -o "$archive" -d "$tmp_dir" 2>/dev/null || true
+        else
+            tar -xf "$archive" -C "$tmp_dir" 2>/dev/null || true
+        fi
+    ) &
+    local extract_pid=$!
+
+    local spin=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+    local si=0
+    while kill -0 "$extract_pid" 2>/dev/null; do
+        set_step_status 2 "spinner" "${spin[$((si % 10))]}"
+        ((si++))
+        sleep 0.08
+    done
+    wait "$extract_pid"
+    rm -f "$archive"
+
+    mkdir -p "$dest"
+    local inner
+    inner=$(ls -d "$tmp_dir"/*/ 2>/dev/null | head -1)
+    if [[ -n "$inner" ]]; then
+        mv "$inner"/* "$dest"/ 2>/dev/null || true
+    else
+        mv "$tmp_dir"/* "$dest"/ 2>/dev/null || true
+    fi
+    rm -rf "$tmp_dir"
+
+    set_step_status 2 "done"
+    set_step_status 3 "running"
+
+    # PATH & Platform specific tasks
+    update_path "$dest" "$platform"
+
+    if [[ "$platform" == "macos" && -d "$dest/Vault.app" ]]; then
+        cp -R "$dest/Vault.app" "/Applications/Vault.app" 2>/dev/null
+    fi
+
+    set_step_status 3 "done"
+    beep success
+
+    # Go below progress bar area and print success box
+    printf "\033[3B\r"
+
+    echo "  ┌──────────────────────────────────────────────┐"
+    echo "  │        ${GREEN}KURULUM BAŞARIYLA TAMAMLANDI${RESET}          │"
+    echo "  ├──────────────────────────────────────────────┤"
+    
+    local padded_dest
+    padded_dest=$(printf "%-34s" "$dest")
+    if [ ${#padded_dest} -gt 34 ]; then
+        padded_dest="${padded_dest:0:31}..."
+    fi
+    echo "  │  Konum   : $padded_dest│"
+    echo "  │  Kullanım: vault run --desktop               │"
+    echo "  └──────────────────────────────────────────────┘"
+    echo ""
 }
 
 release_flow() {

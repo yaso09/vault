@@ -9,6 +9,13 @@
 $ErrorActionPreference = "Continue"
 $ProgressPreference    = "SilentlyContinue"
 
+# ── TLS Setup ──────────────────────────────────────────────────
+try {
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 -bor 12288
+} catch {
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+}
+
 # ── ANSI + UTF-8 (Windows için zorunlu) ────────────────────────
 if ($IsWindows -or $env:OS -eq "Windows_NT") {
     try {
@@ -305,33 +312,68 @@ function Invoke-Download {
 
     Set-StepStatus -Index $StepIndex -Status "running"
 
-    Add-Type -AssemblyName System.Net.Http -ErrorAction SilentlyContinue
+    # Ensure TLS 1.2 & 1.3 are enabled
+    try {
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 -bor 12288
+    } catch {
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+    }
 
-    $http = $null
     $stream     = $null
     $fileStream = $null
+    $response   = $null
 
     try {
-        $http = [System.Net.Http.HttpClient]::new()
-        $http.DefaultRequestHeaders.Add("User-Agent", "Vault-Installer")
-        if ($env:GITHUB_TOKEN) {
-            $http.DefaultRequestHeaders.Add("Authorization", "Bearer $env:GITHUB_TOKEN")
+        $currentUrl = $Url
+        $redirectCount = 0
+        $maxRedirects = 10
+
+        while ($redirectCount -lt $maxRedirects) {
+            $request = [System.Net.HttpWebRequest]::Create($currentUrl)
+            $request.UserAgent = "Vault-Installer"
+            $request.Method = "GET"
+            $request.AllowAutoRedirect = $false
+            $request.AutomaticDecompression = [System.Net.DecompressionMethods]::GZip -bor [System.Net.DecompressionMethods]::Deflate
+            $request.Timeout = 30000
+
+            # Only add Authorization header if it is a GitHub domain to avoid AWS S3 auth errors
+            if ($env:GITHUB_TOKEN -and ($currentUrl -like "*github.com*" -or $currentUrl -like "*github.com/*")) {
+                $request.Headers.Add("Authorization", "Bearer $env:GITHUB_TOKEN")
+            }
+
+            try {
+                $response = $request.GetResponse()
+            } catch [System.Net.WebException] {
+                $response = $_.Exception.Response
+                if ($response -eq $null) { throw $_.Exception }
+            }
+
+            $statusCode = [int]$response.StatusCode
+            if ($statusCode -ge 300 -and $statusCode -le 399) {
+                $location = $response.Headers["Location"]
+                if (-not $location) { break }
+                
+                # Resolve relative URLs
+                $uri = New-Object System.Uri($currentUrl)
+                $redirectUri = New-Object System.Uri($uri, $location)
+                $currentUrl = $redirectUri.AbsoluteUri
+                
+                $response.Close()
+                $response = $null
+                $redirectCount++
+            } else {
+                break
+            }
         }
 
-        $response = $http.GetAsync(
-            $Url,
-            [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead
-        ).GetAwaiter().GetResult()
-
-        if (-not $response.IsSuccessStatusCode) {
+        if ($response -eq $null -or [int]$response.StatusCode -ne 200) {
             Set-StepStatus -Index $StepIndex -Status "error"
             return $false
         }
 
-        $totalBytes = 0
-        try { $totalBytes = $response.Content.Headers.ContentLength } catch {}
+        $totalBytes = $response.ContentLength
+        $stream = $response.GetResponseStream()
 
-        $stream     = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
         $fileStream = [System.IO.FileStream]::new(
             $Dest,
             [System.IO.FileMode]::Create,
@@ -352,7 +394,7 @@ function Invoke-Download {
             $fileStream.Write($buffer, 0, $read)
             $received += $read
 
-            # Hız hesapla (her 500ms)
+            # Calculate speed every 500ms
             $now     = [DateTime]::Now
             $elapsed = ($now - $lastSpeedTime).TotalSeconds
             if ($elapsed -ge 0.5) {
@@ -361,7 +403,7 @@ function Invoke-Download {
                 $lastSpeedTime  = $now
             }
 
-            # Progress bar güncelle
+            # Update progress bar
             $pct      = if ($totalBytes -gt 0) { [Math]::Min(100, [int]($received * 100 / $totalBytes)) } else { -1 }
             $etaStr   = ""
             if ($speed -gt 0 -and $totalBytes -gt 0 -and $received -lt $totalBytes) {
@@ -375,7 +417,7 @@ function Invoke-Download {
                 -EtaStr      $etaStr
         }
 
-        # Son durum: %100
+        # Completed: 100%
         Draw-ProgressBar -Percent 100 `
             -ReceivedStr (Format-FileSize $received) `
             -TotalStr    (Format-FileSize $received) `
@@ -390,7 +432,7 @@ function Invoke-Download {
     } finally {
         try { if ($fileStream) { $fileStream.Close() } } catch {}
         try { if ($stream)     { $stream.Close()     } } catch {}
-        try { if ($http)       { $http.Dispose()     } } catch {}
+        try { if ($response)   { $response.Close()   } } catch {}
     }
 }
 
