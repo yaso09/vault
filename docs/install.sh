@@ -381,6 +381,8 @@ update_path() {
 }
 
 # ── Flow Screens ────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 do_install() {
     local source_type=$1
     local version_label=$2
@@ -403,17 +405,57 @@ do_install() {
         url="$API_BASE/actions/artifacts/$art_id/zip"
     fi
 
-    if ! download_file "$url" "$archive"; then
-        beep error
-        echo "  ${RED}İndirme başarısız.${RESET}"
-        rm -f "$archive"
-        sleep 2
-        return
-    fi
+    # ── Arkaplan indirme + Space Invaders ──────────────────────
+    local game_script="$SCRIPT_DIR/space-invaders.sh"
+
+    curl -L -o "$archive" "$url" 2>/dev/null &
+    local dl_pid=$!
+
+    while kill -0 $dl_pid 2>/dev/null; do
+        clear_screen
+        local saved_tty
+        saved_tty=$(stty -g 2>/dev/null) || true
+        echo ""
+        draw_box_top
+        printf "  │${BOLD}%-${IW}s${RESET}│\n" "  $version_label indiriliyor..."
+        draw_box_bottom
+        echo ""
+        echo "  ${CYAN}🎮 Space Invaders${RESET} için ${BOLD}BOŞLUK${RESET} tuşuna basın"
+        echo "  ${DIM}Q = İptal${RESET}"
+        echo ""
+
+        local key=""
+        stty -echo 2>/dev/null || true
+        IFS= read -r -n1 -t 0.3 key 2>/dev/null || true
+        stty "$saved_tty" 2>/dev/null || true
+
+        case "$key" in
+            " ")
+                kill -STOP $dl_pid 2>/dev/null
+                if [[ -f "$game_script" ]]; then
+                    bash "$game_script"
+                else
+                    echo "  ${RED}space-invaders.sh bulunamadı.${RESET}"
+                    sleep 1
+                fi
+                kill -CONT $dl_pid 2>/dev/null
+                ;;
+            [qQ])
+                kill $dl_pid 2>/dev/null
+                wait $dl_pid 2>/dev/null
+                rm -f "$archive"
+                echo "  ${RED}İndirme iptal edildi.${RESET}"
+                sleep 1
+                return
+                ;;
+        esac
+    done
+
+    wait $dl_pid 2>/dev/null
 
     if [[ ! -s "$archive" ]]; then
         beep error
-        echo "  ${RED}İndirilen dosya boş veya geçersiz.${RESET}"
+        echo "  ${RED}İndirme başarısız.${RESET}"
         rm -f "$archive"
         sleep 2
         return
