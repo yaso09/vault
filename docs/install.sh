@@ -528,10 +528,24 @@ commit_flow() {
         local date="${rest%%|*}"
         local run_id="${rest#*|}"
 
-        local msg_short
-        msg_short=$(echo "$msg" | cut -c1-40)
-        display+=("$sha  $msg_short")
-        display+=("   branch: $branch  $date")
+        local max_msg=$((IW - 4 - 9))   # 44 - 7(SHA) - 2(spaces)
+        local msg_disp
+        if [[ ${#msg} -gt $max_msg ]]; then
+            msg_disp="${msg:0:$((max_msg - 3))}..."
+        else
+            msg_disp="$msg"
+        fi
+
+        local max_br=$((IW - 4 - 23))  # 44 - 11('   branch: ') - 2(spaces) - 10(date)
+        local br_disp
+        if [[ ${#branch} -gt $max_br ]]; then
+            br_disp="${branch:0:$((max_br - 3))}..."
+        else
+            br_disp="$branch"
+        fi
+
+        display+=("$sha  $msg_disp")
+        display+=("   branch: $br_disp  $date")
         data+=("$run_id|$sha")
     done <<< "$raw_lines"
 

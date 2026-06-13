@@ -436,8 +436,14 @@ function Show-CommitFlow {
     $display = @()
     $data = @()
     foreach ($r in $runs) {
-        $display += "$($r.Sha)  $($r.Message)"
-        $display += "   branch: $($r.Branch)  $($r.Date)"
+        $maxMsg = 44 - 9  # SHA(7) + spaces(2) = 9, total IW-4=44
+        $msgDisp = if ($r.Message.Length -gt $maxMsg) { $r.Message.Substring(0, $maxMsg - 3) + "..." } else { $r.Message }
+
+        $maxBr = 44 - 23  # '   branch: '(11) + spaces(2) + date(10) = 23
+        $brDisp = if ($r.Branch.Length -gt $maxBr) { $r.Branch.Substring(0, $maxBr - 3) + "..." } else { $r.Branch }
+
+        $display += "$($r.Sha)  $msgDisp"
+        $display += "   branch: $brDisp  $($r.Date)"
         $data += [PSCustomObject]@{ RunId = $r.RunId; Sha = $r.Sha }
     }
 
