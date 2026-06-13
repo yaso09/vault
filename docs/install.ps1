@@ -305,6 +305,8 @@ function Invoke-Download {
 
     Set-StepStatus -Index $StepIndex -Status "running"
 
+    Add-Type -AssemblyName System.Net.Http -ErrorAction SilentlyContinue
+
     $http = $null
     $stream     = $null
     $fileStream = $null
