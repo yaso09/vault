@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 # ── TUI Constants ───────────────────────────────────────────────
 RESET="\033[0m"
@@ -13,6 +12,19 @@ MAGENTA="\033[35m"
 BLUE="\033[34m"
 
 IW=48  # interior width between ││ borders
+
+# ── Retro Beep ─────────────────────────────────────────────────
+beep() {
+    local pattern=${1:-nav}
+    local bel="printf '\a' >/dev/tty"
+    case "$pattern" in
+        nav)     eval "$bel" ;;
+        select)  eval "$bel"; sleep 0.08; eval "$bel" ;;
+        error)   eval "$bel"; sleep 0.12; eval "$bel"; sleep 0.12; eval "$bel" ;;
+        success) eval "$bel"; sleep 0.1; eval "$bel"; sleep 0.1; eval "$bel" ;;
+        *)       eval "$bel" ;;
+    esac
+}
 
 # ── TUI Primitives ──────────────────────────────────────────────
 clear_screen() {
@@ -75,8 +87,9 @@ draw_footer() {
 }
 
 # ── Menu Renderer ──────────────────────────────────────────────
+# Bash 3 uyumlu: local -n (nameref) yerine eval kullanır
 render_menu() {
-    local -n items=$1
+    local items_ref=$1
     local selected=$2
     local title=$3
     local footer=$4
@@ -87,8 +100,13 @@ render_menu() {
     draw_separator
     draw_blank
 
+    local items_len
+    eval "items_len=\${#${items_ref}[@]}"
+
     local i=0
-    for item in "${items[@]}"; do
+    while [[ $i -lt $items_len ]]; do
+        local item
+        eval "item=\${${items_ref}[$i]}"
         if [[ -z "$item" ]]; then
             draw_blank
         elif [[ $i -eq $selected ]]; then
@@ -96,7 +114,7 @@ render_menu() {
         else
             draw_item 0 "$item"
         fi
-        ((i++))
+        ((i++)) || true
     done
 
     draw_blank
@@ -107,7 +125,6 @@ render_menu() {
 # ── Key Reader ─────────────────────────────────────────────────
 read_key() {
     local key seq
-    # stty ile echo kapat (read -s alternatifi, Git Bash ile uyumlu)
     local saved
     saved=$(stty -g 2>/dev/null) || true
     stty -echo 2>/dev/null || true
@@ -118,14 +135,15 @@ read_key() {
         if [[ $seq == "[" ]]; then
             IFS= read -r -n1 -t 0.1 key 2>/dev/null || true
             case "$key" in
-                A) echo "up"    ;;
-                B) echo "down"  ;;
-                *) echo "esc"   ;;
+                A) beep nav;    echo "up"    ;;
+                B) beep nav;    echo "down"  ;;
+                *)               echo "esc"   ;;
             esac
         else
             echo "esc"
         fi
     elif [[ -z "$key" ]]; then
+        beep select
         echo "enter"
     elif [[ $key == "q" || $key == "Q" ]]; then
         echo "q"
@@ -140,7 +158,7 @@ API_BASE="https://api.github.com/repos/$REPO"
 
 api_get() {
     local url=$1
-    if [[ -n "$GITHUB_TOKEN" ]]; then
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
         curl -sL -H "Authorization: Bearer $GITHUB_TOKEN" "$url"
     else
         curl -sL "$url"
@@ -283,9 +301,9 @@ install_artifact() {
     mkdir -p "$tmp_dir"
 
     if command -v unzip &>/dev/null; then
-        unzip -o "$archive" -d "$tmp_dir" 2>/dev/null
+        unzip -o "$archive" -d "$tmp_dir" 2>/dev/null || true
     else
-        tar -xf "$archive" -C "$tmp_dir" 2>/dev/null
+        tar -xf "$archive" -C "$tmp_dir" 2>/dev/null || true
     fi
     rm -f "$archive"
 
@@ -309,16 +327,18 @@ install_artifact() {
 
     if [[ "$platform" == "windows" ]]; then
         local exe
-        exe=$(ls "$dest"/vault.exe "$dest"/Vault.exe 2>/dev/null | head -1)
-        if [[ -n "$exe" && -n "$USERPROFILE" ]]; then
+        exe=$(ls "$dest"/vault.exe "$dest"/Vault.exe 2>/dev/null | head -1) || true
+        if [[ -n "$exe" && -n "${USERPROFILE:-}" ]]; then
             echo "  Masaüstü kısayolu: $USERPROFILE\\Desktop\\Vault.lnk"
         fi
     fi
 
     echo ""
+    echo ""
     echo "  ┌──────────────────────────────────────┐"
     echo "  │         KURULUM TAMAMLANDI           │"
     echo "  └──────────────────────────────────────┘"
+    beep success
     echo ""
     echo "  Konum: $dest"
     echo "  Kullanım: vault run --desktop"
@@ -332,7 +352,7 @@ update_path() {
 
     case "$platform" in
         linux)
-            if [[ -n "$ZSH_VERSION" || -f "$HOME/.zshrc" ]]; then
+            if [[ -n "${ZSH_VERSION:-}" || -f "$HOME/.zshrc" ]]; then
                 profile="$HOME/.zshrc"
             else
                 profile="$HOME/.bashrc"
@@ -365,7 +385,7 @@ do_install() {
     local source_type=$1
     local version_label=$2
     local platform=$3
-    local art_id=$4
+    local art_id=${4:-}
 
     local url=""
     local archive
@@ -384,6 +404,7 @@ do_install() {
     fi
 
     if ! download_file "$url" "$archive"; then
+        beep error
         echo "  ${RED}İndirme başarısız.${RESET}"
         rm -f "$archive"
         sleep 2
@@ -391,6 +412,7 @@ do_install() {
     fi
 
     if [[ ! -s "$archive" ]]; then
+        beep error
         echo "  ${RED}İndirilen dosya boş veya geçersiz.${RESET}"
         rm -f "$archive"
         sleep 2
@@ -404,10 +426,11 @@ release_flow() {
     local raw_lines
     echo ""
     echo "  Sürümler alınıyor..."
-    raw_lines=$(fetch_releases)
+    raw_lines=$(fetch_releases) || raw_lines=""
     if [[ -z "$raw_lines" ]]; then
+        beep error
         echo "  ${RED}Henüz bir sürüm yayınlanmamış.${RESET}"
-        sleep 1.5
+        sleep 1
         return
     fi
 
@@ -421,6 +444,13 @@ release_flow() {
         tags+=("$tag")
     done <<< "$raw_lines"
 
+    if [[ ${#display[@]} -eq 0 ]]; then
+        beep error
+        echo "  ${RED}Henüz bir sürüm yayınlanmamış.${RESET}"
+        sleep 1
+        return
+    fi
+
     local selected=0
     while true; do
         render_menu display $selected "📦  Kararlı Sürüm Seçin" \
@@ -429,8 +459,8 @@ release_flow() {
         local key
         key=$(read_key)
         case "$key" in
-            up)    [[ $selected -gt 0 ]] && ((selected--)) ;;
-            down)  [[ $selected -lt $((${#display[@]} - 1)) ]] && ((selected++)) ;;
+            up)    [[ $selected -gt 0 ]] && ((selected--)) || true ;;
+            down)  [[ $selected -lt $((${#display[@]} - 1)) ]] && ((selected++)) || true ;;
             enter)
                 platform_flow "${tags[$selected]}"
                 return
@@ -449,8 +479,8 @@ platform_flow() {
     local display=()
     local detected_idx=0
 
-    for i in "${!platforms[@]}"; do
-        local p="${platforms[$i]}"
+    local i=0
+    for p in "${platforms[@]}"; do
         if [[ "$p" == "$detected" ]]; then
             display+=("$p (otomatik tespit)")
             detected_idx=$i
@@ -461,6 +491,7 @@ platform_flow() {
         else
             display+=("$p")
         fi
+        ((i++)) || true
     done
 
     local selected=$detected_idx
@@ -471,13 +502,13 @@ platform_flow() {
         local key
         key=$(read_key)
         case "$key" in
-            up)    [[ $selected -gt 0 ]] && ((selected--)) ;;
-            down)  [[ $selected -lt $((${#display[@]} - 1)) ]] && ((selected++)) ;;
+            up)    [[ $selected -gt 0 ]] && ((selected--)) || true ;;
+            down)  [[ $selected -lt $((${#display[@]} - 1)) ]] && ((selected++)) || true ;;
             enter)
                 do_install "release" "$tag" "${platforms[$selected]}"
                 echo ""
                 echo "  Ana menüye dönmek için bir tuşa basın..."
-                read -r -s -n1
+                read -r -s -n1 || true
                 return
                 ;;
             esc|q) return ;;
@@ -486,20 +517,22 @@ platform_flow() {
 }
 
 commit_flow() {
-    if [[ -z "$GITHUB_TOKEN" ]]; then
+    if [[ -z "${GITHUB_TOKEN:-}" ]]; then
         echo ""
-        echo "  Workflow artifact'leri icin GitHub Token gerekli."
-        echo "  (https://github.com/settings/tokens adresinden olusturabilirsiniz)"
+        echo "  Workflow artifact'leri için GitHub Token gerekli."
+        echo "  (https://github.com/settings/tokens adresinden oluşturabilirsiniz)"
         echo ""
         printf "  GitHub Token: "
+        local saved
         saved=$(stty -g 2>/dev/null) || true
         stty -echo 2>/dev/null || true
         IFS= read -r GITHUB_TOKEN || true
         stty "$saved" 2>/dev/null || true
         echo ""
-        if [[ -z "$GITHUB_TOKEN" ]]; then
-            echo "  ${RED}Token gerekli. Ana menuye donuluyor.${RESET}"
-            sleep 1.5
+        if [[ -z "${GITHUB_TOKEN:-}" ]]; then
+            beep error
+            echo "  ${RED}Token gerekli. Ana menüye dönülüyor.${RESET}"
+            sleep 1
             return
         fi
         export GITHUB_TOKEN
@@ -508,10 +541,11 @@ commit_flow() {
     local raw_lines
     echo ""
     echo "  Workflow run'ları alınıyor..."
-    raw_lines=$(fetch_workflow_runs)
+    raw_lines=$(fetch_workflow_runs) || raw_lines=""
     if [[ -z "$raw_lines" ]]; then
+        beep error
         echo "  ${RED}Hiç test yapısı bulunamadı.${RESET}"
-        sleep 1.5
+        sleep 1
         return
     fi
 
@@ -528,18 +562,18 @@ commit_flow() {
         local date="${rest%%|*}"
         local run_id="${rest#*|}"
 
-        local max_msg=$((IW - 4 - 9))   # 44 - 7(SHA) - 2(spaces)
+        local max_msg=$(($IW - 4 - 9))
         local msg_disp
         if [[ ${#msg} -gt $max_msg ]]; then
-            msg_disp="${msg:0:$((max_msg - 3))}..."
+            msg_disp="${msg:0:$(($max_msg - 3))}..."
         else
             msg_disp="$msg"
         fi
 
-        local max_br=$((IW - 4 - 23))  # 44 - 11('   branch: ') - 2(spaces) - 10(date)
+        local max_br=$(($IW - 4 - 23))
         local br_disp
         if [[ ${#branch} -gt $max_br ]]; then
-            br_disp="${branch:0:$((max_br - 3))}..."
+            br_disp="${branch:0:$(($max_br - 3))}..."
         else
             br_disp="$branch"
         fi
@@ -549,6 +583,13 @@ commit_flow() {
         data+=("$run_id|$sha")
     done <<< "$raw_lines"
 
+    if [[ ${#display[@]} -eq 0 ]]; then
+        beep error
+        echo "  ${RED}Hiç test yapısı bulunamadı.${RESET}"
+        sleep 1
+        return
+    fi
+
     local selected=0
     while true; do
         render_menu display $selected "🔧  Test Sürümü Seçin" \
@@ -557,11 +598,12 @@ commit_flow() {
         local key
         key=$(read_key)
         case "$key" in
-            up)    [[ $selected -gt 0 ]] && ((selected--)) ;;
-            down)  [[ $selected -lt $((${#display[@]} - 1)) ]] && ((selected++)) ;;
+            up)    [[ $selected -gt 0 ]] && ((selected--)) || true ;;
+            down)  [[ $selected -lt $((${#display[@]} - 1)) ]] && ((selected++)) || true ;;
             enter)
-                local run_id="${data[$selected]%%|*}"
-                local sha="${data[$selected]#*|}"
+                local entry="${data[$selected]}"
+                local run_id="${entry%%|*}"
+                local sha="${entry#*|}"
                 artifact_flow "$run_id" "$sha"
                 return
                 ;;
@@ -577,10 +619,10 @@ artifact_flow() {
 
     echo ""
     echo "  Yapıtlar alınıyor..."
-    raw_lines=$(fetch_artifacts "$run_id")
+    raw_lines=$(fetch_artifacts "$run_id") || raw_lines=""
     if [[ -z "$raw_lines" ]]; then
         echo "  ${RED}Seçilen commit için yapı bulunamadı.${RESET}"
-        sleep 1.5
+        sleep 1
         return
     fi
 
@@ -601,6 +643,12 @@ artifact_flow() {
         art_ids+=("$art_id")
     done <<< "$raw_lines"
 
+    if [[ ${#display[@]} -eq 0 ]]; then
+        echo "  ${RED}Seçilen commit için yapı bulunamadı.${RESET}"
+        sleep 1
+        return
+    fi
+
     local selected=0
     while true; do
         render_menu display $selected "Yapı Seçin — $sha" \
@@ -609,14 +657,15 @@ artifact_flow() {
         local key
         key=$(read_key)
         case "$key" in
-            up)    [[ $selected -gt 0 ]] && ((selected--)) ;;
-            down)  [[ $selected -lt $((${#display[@]} - 1)) ]] && ((selected++)) ;;
+            up)    [[ $selected -gt 0 ]] && ((selected--)) || true ;;
+            down)  [[ $selected -lt $((${#display[@]} - 1)) ]] && ((selected++)) || true ;;
             enter)
-                do_install "artifact" "$sha" "${art_names[$selected]%-build-artifact}" \
+                do_install "artifact" "$sha" \
+                    "${art_names[$selected]%-build-artifact}" \
                     "${art_ids[$selected]}"
                 echo ""
                 echo "  Ana menüye dönmek için bir tuşa basın..."
-                read -r -s -n1
+                read -r -s -n1 || true
                 return
                 ;;
             esc|q) return ;;
@@ -641,8 +690,8 @@ main_menu() {
         local key
         key=$(read_key)
         case "$key" in
-            up)   [[ $selected -gt 0 ]] && ((selected--)) ;;
-            down) [[ $selected -lt $((${#options[@]} - 1)) ]] && ((selected++)) ;;
+            up)   [[ $selected -gt 0 ]] && ((selected--)) || true ;;
+            down) [[ $selected -lt $((${#options[@]} - 1)) ]] && ((selected++)) || true ;;
             enter)
                 case $selected in
                     0) release_flow ;;
@@ -653,13 +702,15 @@ main_menu() {
             q|esc) clear_screen; show_cursor; exit 0 ;;
         esac
 
+        # Boş satırları atla
         while [[ $selected -lt ${#options[@]} && -z "${options[$selected]}" ]]; do
-            ((selected++))
+            ((selected++)) || true
         done
     done
 }
 
 # ── Entry Point ─────────────────────────────────────────────────
 hide_cursor
-trap 'show_cursor; clear_screen; exit' INT TERM EXIT
+# EXIT trap'ten clear_screen kaldırıldı — hata olunca ekran silinmez
+trap 'show_cursor; exit' INT TERM EXIT
 main_menu

@@ -21,6 +21,22 @@ $RED = "${ESC}[31m"
 
 $Script:IW = 48  # interior width between ││ borders
 
+# ── Retro Beep ─────────────────────────────────────────────────
+function Write-Beep {
+    param([string]$Pattern = "nav")
+    try {
+        switch ($Pattern) {
+            "nav"     { [Console]::Beep(900, 60) }
+            "select"  { [Console]::Beep(900, 60); Start-Sleep -Milliseconds 80; [Console]::Beep(1200, 80) }
+            "error"   { [Console]::Beep(300, 150); Start-Sleep -Milliseconds 120; [Console]::Beep(200, 200); Start-Sleep -Milliseconds 120; [Console]::Beep(150, 300) }
+            "success" { [Console]::Beep(600, 100); Start-Sleep -Milliseconds 80; [Console]::Beep(800, 100); Start-Sleep -Milliseconds 80; [Console]::Beep(1200, 200) }
+            default   { [Console]::Beep(900, 60) }
+        }
+    } catch {
+        # Beep not supported in this environment
+    }
+}
+
 # ── TUI Primitives ──────────────────────────────────────────────
 function Clear-Screen {
     "${ESC}[2J${ESC}[H" | Write-Host -NoNewline
@@ -102,14 +118,13 @@ function Render-Menu {
 # ── Key Reader ─────────────────────────────────────────────────
 function Read-KeyPress {
     $key = $host.UI.RawUI.ReadKey("NoEcho, IncludeKeyDown")
-    # Do not let the key echo to the display
     switch ($key.VirtualKeyCode) {
-        38  { return "up" }      # Up arrow
-        40  { return "down" }    # Down arrow
-        13  { return "enter" }   # Enter
-        27  { return "esc" }     # Escape
-        81  { return "q" }       # Q
-        113 { return "q" }       # q
+        38  { Write-Beep nav;    return "up" }      # Up arrow
+        40  { Write-Beep nav;    return "down" }    # Down arrow
+        13  { Write-Beep select; return "enter" }   # Enter
+        27  {                     return "esc" }     # Escape
+        81  {                     return "q" }       # Q
+        113 {                     return "q" }       # q
     }
     return "other"
 }
@@ -233,6 +248,7 @@ function Install-Artifact {
     try {
         Expand-Archive -Path $Archive -DestinationPath $tmpDir -Force
     } catch {
+        Write-Beep error
         Write-Host "  ${RED}Çıkarma başarısız: $_${RESET}"
         return $false
     }
@@ -265,9 +281,11 @@ function Install-Artifact {
     }
 
     Write-Host ""
+    Write-Host ""
     Write-Host "  ┌======================================┐"
     Write-Host "  │         KURULUM TAMAMLANDI           │"
     Write-Host "  └======================================┘"
+    Write-Beep success
     Write-Host ""
     Write-Host "  Konum: $dest"
     Write-Host "  Kullanım: vault run --desktop"
@@ -314,6 +332,7 @@ function Start-Install {
 
     $ok = Invoke-Download -Url $url -Dest $archive
     if (-not $ok) {
+        Write-Beep error
         Write-Host "  ${RED}İndirme başarısız.${RESET}"
         Remove-Item $archive -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 2
@@ -321,6 +340,7 @@ function Start-Install {
     }
 
     if (-not (Test-Path $archive) -or (Get-Item $archive).Length -eq 0) {
+        Write-Beep error
         Write-Host "  ${RED}İndirilen dosya boş veya geçersiz.${RESET}"
         Remove-Item $archive -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 2
@@ -339,6 +359,7 @@ function Show-ReleaseFlow {
     Write-Host "  Sürümler alınıyor..."
     $releases = Get-Releases
     if ($releases.Count -eq 0) {
+        Write-Beep error
         Write-Host "  ${RED}Henüz bir sürüm yayınlanmamış.${RESET}"
         Start-Sleep -Seconds 1.5
         return
@@ -417,6 +438,7 @@ function Show-CommitFlow {
         Write-Host ""
         $token = Read-Host "  GitHub Token"
         if ([string]::IsNullOrEmpty($token)) {
+            Write-Beep error
             Write-Host "  ${RED}Token gerekli. Ana menuye donuluyor.${RESET}"
             Start-Sleep -Seconds 1.5
             return
@@ -428,6 +450,7 @@ function Show-CommitFlow {
     Write-Host "  Workflow run'ları alınıyor..."
     $runs = Get-WorkflowRuns
     if ($runs.Count -eq 0) {
+        Write-Beep error
         Write-Host "  ${RED}Hiç test yapısı bulunamadı.${RESET}"
         Start-Sleep -Seconds 1.5
         return
