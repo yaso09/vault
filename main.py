@@ -371,6 +371,22 @@ def run_autodetect(port: int = 8000):
     run_server(host=host, port=port, mode=mode)
 
 
+# ── Entry Points ──────────────────────────────────────────────────
+
+def run_gui():
+    """GUI entry point: auto-detect platform and start server + GUI."""
+    run_autodetect()
+
+
 if __name__ == "__main__":
-    from utils.cli import app
-    app()
+    import sys
+
+    # In Flet builds there's no terminal — skip CLI and run GUI directly.
+    # When launched from a real terminal with arguments, use the Typer CLI.
+    user_args = [a for a in sys.argv[1:] if not a.startswith("--flet")]
+
+    if user_args:
+        from utils.cli import app
+        app()
+    else:
+        run_gui()
