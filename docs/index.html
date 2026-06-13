@@ -448,7 +448,7 @@
 
 <section class="hero">
     <div class="container">
-        <div class="version-badge"><i class="fa-solid fa-cube"></i> v0.5.0</div>
+        <div class="version-badge" id="versionBadge"><i class="fa-solid fa-cube"></i> <span id="versionText">v0.5.0</span></div>
         <h1>
             YouTube videolarını<br>
             <span class="accent">arayın, indirin, izleyin</span>
@@ -673,6 +673,16 @@
 </footer>
 
 <script>
+(async function() {
+    try {
+        const r = await fetch('https://api.github.com/repos/yaso09/vault/releases/latest');
+        if (r.ok) {
+            const data = await r.json();
+            document.getElementById('versionText').textContent = data.tag_name;
+        }
+    } catch {}
+})();
+
 (function() {
     const tabs = document.querySelectorAll('.dl-tab');
     const panels = document.querySelectorAll('.dl-panel');
