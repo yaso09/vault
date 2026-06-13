@@ -312,18 +312,20 @@ function Invoke-Download {
     Set-StepStatus -Index $StepIndex -Status "running"
 
     try {
-        $args = @(
-            "-L",              # redirect follow
-            "-o", $Dest,       # output file
-            $Url
-        )
+        # curl komutunu kur
+        $args = @("-L", "--fail", "-o", $Dest)
 
-        if ($env:GITHUB_TOKEN) {
-            $args = @("-L", "-H", "Authorization: Bearer $env:GITHUB_TOKEN", "-o", $Dest, $Url)
+        # token varsa ekle (opsiyonel)
+        if (![string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
+            $args += "-H"
+            $args += "Authorization: Bearer $env:GITHUB_TOKEN"
         }
+
+        $args += $Url
 
         & curl.exe @args
 
+        # doğrulama
         if (Test-Path $Dest -and (Get-Item $Dest).Length -gt 0) {
             Set-StepStatus -Index $StepIndex -Status "done"
             return $true
