@@ -310,13 +310,6 @@ function Start-Install {
         $url = "https://github.com/$($Script:REPO)/releases/download/$VersionLabel/${Platform}-build-artifact.zip"
     } else {
         $url = "$($Script:API_BASE)/actions/artifacts/$ArtifactId/zip"
-        if (-not $env:GITHUB_TOKEN) {
-            Write-Host ""
-            Write-Host "  ${YELLOW}Not: Workflow artifact'leri GitHub yetkilendirmesi gerektirebilir.${RESET}"
-            Write-Host "  ${YELLOW}Hata alırsanız:${RESET}"
-            Write-Host "  ${YELLOW}  `$env:GITHUB_TOKEN=ghp_... ; & docs\install.ps1${RESET}"
-            Write-Host ""
-        }
     }
 
     $ok = Invoke-Download -Url $url -Dest $archive
@@ -417,6 +410,20 @@ function Show-PlatformFlow {
 }
 
 function Show-CommitFlow {
+    if (-not $env:GITHUB_TOKEN) {
+        Write-Host ""
+        Write-Host "  Workflow artifact'leri icin GitHub Token gerekli."
+        Write-Host "  (https://github.com/settings/tokens adresinden olusturabilirsiniz)"
+        Write-Host ""
+        $token = Read-Host "  GitHub Token"
+        if ([string]::IsNullOrEmpty($token)) {
+            Write-Host "  ${RED}Token gerekli. Ana menuye donuluyor.${RESET}"
+            Start-Sleep -Seconds 1.5
+            return
+        }
+        $env:GITHUB_TOKEN = $token
+    }
+
     Write-Host ""
     Write-Host "  Workflow run'ları alınıyor..."
     $runs = Get-WorkflowRuns

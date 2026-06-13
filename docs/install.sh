@@ -107,11 +107,16 @@ render_menu() {
 # ── Key Reader ─────────────────────────────────────────────────
 read_key() {
     local key seq
-    IFS= read -r -s -n1 key 2>/dev/null
+    # stty ile echo kapat (read -s alternatifi, Git Bash ile uyumlu)
+    local saved
+    saved=$(stty -g 2>/dev/null) || true
+    stty -echo 2>/dev/null || true
+    IFS= read -r -n1 key 2>/dev/null || true
+    stty "$saved" 2>/dev/null || true
     if [[ $key == $'\033' ]]; then
-        IFS= read -r -s -n1 -t 0.1 seq 2>/dev/null
+        IFS= read -r -n1 -t 0.1 seq 2>/dev/null || true
         if [[ $seq == "[" ]]; then
-            IFS= read -r -s -n1 -t 0.1 key 2>/dev/null
+            IFS= read -r -n1 -t 0.1 key 2>/dev/null || true
             case "$key" in
                 A) echo "up"    ;;
                 B) echo "down"  ;;
@@ -124,6 +129,8 @@ read_key() {
         echo "enter"
     elif [[ $key == "q" || $key == "Q" ]]; then
         echo "q"
+    else
+        echo "other"
     fi
 }
 
@@ -374,13 +381,6 @@ do_install() {
         url="https://github.com/$REPO/releases/download/$version_label/${platform}-build-artifact.zip"
     else
         url="$API_BASE/actions/artifacts/$art_id/zip"
-        if [[ -z "$GITHUB_TOKEN" ]]; then
-            echo ""
-            echo "  ${YELLOW}Not: Workflow artifact'leri GitHub yetkilendirmesi gerektirebilir.${RESET}"
-            echo "  ${YELLOW}Hata alırsanız:${RESET}"
-            echo "  ${YELLOW}  GITHUB_TOKEN=ghp_... bash docs/install.sh${RESET}"
-            echo ""
-        fi
     fi
 
     if ! download_file "$url" "$archive"; then
@@ -486,6 +486,25 @@ platform_flow() {
 }
 
 commit_flow() {
+    if [[ -z "$GITHUB_TOKEN" ]]; then
+        echo ""
+        echo "  Workflow artifact'leri icin GitHub Token gerekli."
+        echo "  (https://github.com/settings/tokens adresinden olusturabilirsiniz)"
+        echo ""
+        printf "  GitHub Token: "
+        saved=$(stty -g 2>/dev/null) || true
+        stty -echo 2>/dev/null || true
+        IFS= read -r GITHUB_TOKEN || true
+        stty "$saved" 2>/dev/null || true
+        echo ""
+        if [[ -z "$GITHUB_TOKEN" ]]; then
+            echo "  ${RED}Token gerekli. Ana menuye donuluyor.${RESET}"
+            sleep 1.5
+            return
+        fi
+        export GITHUB_TOKEN
+    fi
+
     local raw_lines
     echo ""
     echo "  Workflow run'ları alınıyor..."
