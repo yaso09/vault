@@ -58,7 +58,7 @@ function Draw-Blank {
 
 function Draw-Item {
     param([int]$Selected, [string]$Text)
-    $innerWidth = $Script:IW - 5
+    $innerWidth = $Script:IW - 4
     if ($Selected -eq 1) {
         $padded = $Text.PadRight($innerWidth)
         "  │  ${GREEN}>${RESET} $padded│" | Write-Host

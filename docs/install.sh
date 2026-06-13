@@ -61,10 +61,10 @@ draw_item() {
     local text=$2
     local padded
     if [[ $selected -eq 1 ]]; then
-        padded=$(printf "%-$(($IW - 5))s" "$text")
+        padded=$(printf "%-$(($IW - 4))s" "$text")
         printf "  │  ${GREEN}>${RESET} %s│\n" "$padded"
     else
-        padded=$(printf "%-$(($IW - 5))s" "$text")
+        padded=$(printf "%-$(($IW - 4))s" "$text")
         printf "  │    %s│\n" "$padded"
     fi
 }
