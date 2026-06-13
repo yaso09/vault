@@ -244,7 +244,7 @@ def search(
     with console.status("[cyan]Aranıyor...", spinner="dots"):
         results = search_youtube(query=query, type_filter=type, date_filter=date, sort_filter=sort)
 
-    items = results.get("results", [])[:limit]
+    items = results[:limit]
 
     if not items:
         typer.echo("Sonuç bulunamadı.")
