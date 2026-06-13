@@ -306,133 +306,35 @@ function Draw-ProgressBar {
     }
 }
 
-# ── Download (streaming, gerçek zamanlı ilerleme) ──────────────
 function Invoke-Download {
     param([string]$Url, [string]$Dest, [int]$StepIndex)
 
     Set-StepStatus -Index $StepIndex -Status "running"
 
-    # Ensure TLS 1.2 & 1.3 are enabled
     try {
-        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 -bor 12288
-    } catch {
-        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-    }
-
-    $stream     = $null
-    $fileStream = $null
-    $response   = $null
-
-    try {
-        $currentUrl = $Url
-        $redirectCount = 0
-        $maxRedirects = 10
-
-        while ($redirectCount -lt $maxRedirects) {
-            $request = [System.Net.HttpWebRequest]::Create($currentUrl)
-            $request.UserAgent = "Vault-Installer"
-            $request.Method = "GET"
-            $request.AllowAutoRedirect = $false
-            $request.AutomaticDecompression = [System.Net.DecompressionMethods]::GZip -bor [System.Net.DecompressionMethods]::Deflate
-            $request.Timeout = 30000
-
-            # Only add Authorization header if it is a GitHub domain to avoid AWS S3 auth errors
-            if ($env:GITHUB_TOKEN -and ($currentUrl -like "*github.com*" -or $currentUrl -like "*github.com/*")) {
-                $request.Headers.Add("Authorization", "Bearer $env:GITHUB_TOKEN")
-            }
-
-            try {
-                $response = $request.GetResponse()
-            } catch [System.Net.WebException] {
-                $response = $_.Exception.Response
-                if ($response -eq $null) { throw $_.Exception }
-            }
-
-            $statusCode = [int]$response.StatusCode
-            if ($statusCode -ge 300 -and $statusCode -le 399) {
-                $location = $response.Headers["Location"]
-                if (-not $location) { break }
-                
-                # Resolve relative URLs
-                $uri = New-Object System.Uri($currentUrl)
-                $redirectUri = New-Object System.Uri($uri, $location)
-                $currentUrl = $redirectUri.AbsoluteUri
-                
-                $response.Close()
-                $response = $null
-                $redirectCount++
-            } else {
-                break
-            }
-        }
-
-        if ($response -eq $null -or [int]$response.StatusCode -ne 200) {
-            Set-StepStatus -Index $StepIndex -Status "error"
-            return $false
-        }
-
-        $totalBytes = $response.ContentLength
-        $stream = $response.GetResponseStream()
-
-        $fileStream = [System.IO.FileStream]::new(
-            $Dest,
-            [System.IO.FileMode]::Create,
-            [System.IO.FileAccess]::Write,
-            [System.IO.FileShare]::None,
-            65536
+        $args = @(
+            "-L",              # redirect follow
+            "-o", $Dest,       # output file
+            $Url
         )
 
-        $buffer         = New-Object byte[] 65536
-        $received       = [long]0
-        $lastSpeedBytes = [long]0
-        $lastSpeedTime  = [DateTime]::Now
-        $speed          = [double]0
-
-        while ($true) {
-            $read = $stream.Read($buffer, 0, $buffer.Length)
-            if ($read -eq 0) { break }
-            $fileStream.Write($buffer, 0, $read)
-            $received += $read
-
-            # Calculate speed every 500ms
-            $now     = [DateTime]::Now
-            $elapsed = ($now - $lastSpeedTime).TotalSeconds
-            if ($elapsed -ge 0.5) {
-                $speed          = ($received - $lastSpeedBytes) / $elapsed
-                $lastSpeedBytes = $received
-                $lastSpeedTime  = $now
-            }
-
-            # Update progress bar
-            $pct      = if ($totalBytes -gt 0) { [Math]::Min(100, [int]($received * 100 / $totalBytes)) } else { -1 }
-            $etaStr   = ""
-            if ($speed -gt 0 -and $totalBytes -gt 0 -and $received -lt $totalBytes) {
-                $etaStr = Format-Eta -Seconds (($totalBytes - $received) / $speed)
-            }
-            Draw-ProgressBar `
-                -Percent     $pct `
-                -ReceivedStr (Format-FileSize $received) `
-                -TotalStr    (if ($totalBytes -gt 0) { Format-FileSize $totalBytes } else { "?" }) `
-                -SpeedStr    (if ($speed -gt 0) { "$(Format-FileSize ([long]$speed))/s" } else { "" }) `
-                -EtaStr      $etaStr
+        if ($env:GITHUB_TOKEN) {
+            $args = @("-L", "-H", "Authorization: Bearer $env:GITHUB_TOKEN", "-o", $Dest, $Url)
         }
 
-        # Completed: 100%
-        Draw-ProgressBar -Percent 100 `
-            -ReceivedStr (Format-FileSize $received) `
-            -TotalStr    (Format-FileSize $received) `
-            -SpeedStr    "" -EtaStr "tamamlandı"
+        & curl.exe @args
 
-        Set-StepStatus -Index $StepIndex -Status "done"
-        return $true
+        if (Test-Path $Dest -and (Get-Item $Dest).Length -gt 0) {
+            Set-StepStatus -Index $StepIndex -Status "done"
+            return $true
+        }
 
-    } catch {
         Set-StepStatus -Index $StepIndex -Status "error"
         return $false
-    } finally {
-        try { if ($fileStream) { $fileStream.Close() } } catch {}
-        try { if ($stream)     { $stream.Close()     } } catch {}
-        try { if ($response)   { $response.Close()   } } catch {}
+    }
+    catch {
+        Set-StepStatus -Index $StepIndex -Status "error"
+        return $false
     }
 }
 
