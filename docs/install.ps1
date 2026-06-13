@@ -240,7 +240,7 @@ function Install-Artifact {
     New-Item -ItemType Directory -Path $dest -Force | Out-Null
     $inner = Get-ChildItem -Directory -Path $tmpDir | Select-Object -First 1
     if ($inner) {
-        Move-Item -Path $inner.FullName\* -Destination $dest -Force -ErrorAction SilentlyContinue
+        Move-Item -Path (Join-Path $inner.FullName "*") -Destination $dest -Force -ErrorAction SilentlyContinue
     } else {
         Get-ChildItem -Path $tmpDir | Move-Item -Destination $dest -Force -ErrorAction SilentlyContinue
     }
