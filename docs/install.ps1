@@ -6,17 +6,13 @@
     Kararlı sürüm (Release) veya test sürümü (Commit artifact) kurar.
 #>
 
-$ErrorActionPreference = "Continue"   # Stop yerine Continue — API hatalarında script ölmez
+$ErrorActionPreference = "Continue"
 $ProgressPreference    = "SilentlyContinue"
 
 # ── ANSI + UTF-8 (Windows için zorunlu) ────────────────────────
 if ($IsWindows -or $env:OS -eq "Windows_NT") {
     try {
-        # ANSI escape işleme
-        $mode = [Console]::OutputEncoding
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        $null = [System.Runtime.InteropServices.RuntimeInformation]  # suppress unused
-        # VT100 / ANSI modunu etkinleştir (Windows 10 1903+)
         $kernel32 = Add-Type -MemberDefinition @'
 [DllImport("kernel32.dll", SetLastError = true)]
 public static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
@@ -27,11 +23,11 @@ public static extern IntPtr GetStdHandle(int nStdHandle);
 '@ -Name "Kernel32" -Namespace "Win32" -PassThru -ErrorAction SilentlyContinue
         if ($kernel32) {
             $stdOut = [Win32.Kernel32]::GetStdHandle(-11)
-            $consoleMode = 0
-            [Win32.Kernel32]::GetConsoleMode($stdOut, [ref]$consoleMode) | Out-Null
-            [Win32.Kernel32]::SetConsoleMode($stdOut, ($consoleMode -bor 0x0004)) | Out-Null
+            $cmode  = 0
+            [Win32.Kernel32]::GetConsoleMode($stdOut, [ref]$cmode) | Out-Null
+            [Win32.Kernel32]::SetConsoleMode($stdOut, ($cmode -bor 0x0004)) | Out-Null
         }
-    } catch { <# ANSI zaten açıksa veya desteklenmiyorsa sessizce geç #> }
+    } catch {}
 }
 
 # ── TUI Constants ───────────────────────────────────────────────
@@ -41,11 +37,12 @@ $BOLD   = "${ESC}[1m"
 $DIM    = "${ESC}[2m"
 $GREEN  = "${ESC}[32m"
 $CYAN   = "${ESC}[36m"
+$YELLOW = "${ESC}[33m"
 $RED    = "${ESC}[31m"
 
-$Script:IW = 48  # ││ arasındaki iç genişlik
+$Script:IW = 48   # ││ arasındaki iç genişlik
 
-# ── Retro Beep ─────────────────────────────────────────────────
+# ── Beep ────────────────────────────────────────────────────────
 function Write-Beep {
     param([string]$Pattern = "nav")
     try {
@@ -55,7 +52,7 @@ function Write-Beep {
             "error"   { [Console]::Beep(300, 150); Start-Sleep -Milliseconds 120; [Console]::Beep(200, 200); Start-Sleep -Milliseconds 120; [Console]::Beep(150, 300) }
             "success" { [Console]::Beep(600, 100); Start-Sleep -Milliseconds 80; [Console]::Beep(800, 100); Start-Sleep -Milliseconds 80; [Console]::Beep(1200, 200) }
         }
-    } catch { <# Desteklenmeyen ortamlarda sessizce geç #> }
+    } catch {}
 }
 
 # ── TUI Primitives ──────────────────────────────────────────────
@@ -70,7 +67,6 @@ function Draw-Blank     { "  │$(' ' * $Script:IW)│" | Write-Host }
 
 function Draw-Title {
     param([string]$Text)
-    # Önce düz metin olarak doldur, sonra renk ekle — ANSI karakter sayısını bozmamak için
     $padded = "  $Text".PadRight($Script:IW)
     "  │${BOLD}${CYAN}${padded}${RESET}│" | Write-Host
 }
@@ -78,7 +74,6 @@ function Draw-Title {
 function Draw-Item {
     param([int]$Selected, [string]$Text)
     $innerWidth = $Script:IW - 4
-    # Düz metin doldur, ANSI sonra ekle
     $padded = $Text.PadRight($innerWidth)
     if ($Selected -eq 1) {
         "  │  ${GREEN}>${RESET} ${padded}│" | Write-Host
@@ -95,23 +90,16 @@ function Render-Menu {
         [string]$Title,
         [string]$Footer = "↑/↓: Gezin  Enter: Seç  Q: Çıkış"
     )
-
     Clear-Screen
     Draw-BoxTop
     Draw-Title -Text $Title
     Draw-Separator
     Draw-Blank
-
     for ($i = 0; $i -lt $Items.Length; $i++) {
-        if ([string]::IsNullOrEmpty($Items[$i])) {
-            Draw-Blank
-        } elseif ($i -eq $Selected) {
-            Draw-Item -Selected 1 -Text $Items[$i]
-        } else {
-            Draw-Item -Selected 0 -Text $Items[$i]
-        }
+        if ([string]::IsNullOrEmpty($Items[$i])) { Draw-Blank }
+        elseif ($i -eq $Selected)               { Draw-Item -Selected 1 -Text $Items[$i] }
+        else                                     { Draw-Item -Selected 0 -Text $Items[$i] }
     }
-
     Draw-Blank
     Draw-BoxBottom
     "${DIM}  ${Footer}${RESET}" | Write-Host
@@ -125,8 +113,8 @@ function Read-KeyPress {
         40  { Write-Beep nav;    return "down" }
         13  { Write-Beep select; return "enter" }
         27  {                    return "esc" }
-        81  {                    return "q" }   # Q
-        113 {                    return "q" }   # q
+        81  {                    return "q" }
+        113 {                    return "q" }
     }
     return "other"
 }
@@ -138,14 +126,8 @@ $Script:API_BASE = "https://api.github.com/repos/$($Script:REPO)"
 function Invoke-GitHubAPI {
     param([string]$Url)
     $params = @{ Uri = $Url; UseBasicParsing = $true }
-    if ($env:GITHUB_TOKEN) {
-        $params.Headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN" }
-    }
-    try {
-        return Invoke-RestMethod @params -ErrorAction Stop
-    } catch {
-        return $null
-    }
+    if ($env:GITHUB_TOKEN) { $params.Headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN" } }
+    try { return Invoke-RestMethod @params -ErrorAction Stop } catch { return $null }
 }
 
 function Get-Releases {
@@ -166,9 +148,7 @@ function Get-WorkflowRuns {
     if (-not $data -or -not $data.workflow_runs) { return @() }
     $result = @()
     foreach ($r in $data.workflow_runs) {
-        $msg = if ($r.head_commit -and $r.head_commit.message) {
-            $r.head_commit.message.Split("`n")[0]
-        } else { "?" }
+        $msg = if ($r.head_commit -and $r.head_commit.message) { $r.head_commit.message.Split("`n")[0] } else { "?" }
         if ($msg.Length -gt 50) { $msg = $msg.Substring(0, 50) }
         $sha = if ($r.head_sha.Length -ge 7) { $r.head_sha.Substring(0, 7) } else { $r.head_sha }
         $result += [PSCustomObject]@{
@@ -188,11 +168,7 @@ function Get-RunArtifacts {
     if (-not $data -or -not $data.artifacts) { return @() }
     $result = @()
     foreach ($a in $data.artifacts) {
-        $result += [PSCustomObject]@{
-            Name = $a.name
-            Size = [long]$a.size_in_bytes
-            Id   = [long]$a.id
-        }
+        $result += [PSCustomObject]@{ Name = $a.name; Size = [long]$a.size_in_bytes; Id = [long]$a.id }
     }
     return $result
 }
@@ -206,62 +182,315 @@ function Format-FileSize {
     return "$Bytes B"
 }
 
+function Format-Eta {
+    param([double]$Seconds)
+    if ($Seconds -le 0)   { return "" }
+    if ($Seconds -lt 60)  { return "~$([int]$Seconds)s kaldı" }
+    if ($Seconds -lt 3600){ return "~$([int]($Seconds/60))dk kaldı" }
+    return "~$([int]($Seconds/3600))sa kaldı"
+}
+
 function Get-InstallBase { return "$env:APPDATA\Vault" }
 
-# ── Download & Install ─────────────────────────────────────────
-function Invoke-Download {
-    param([string]$Url, [string]$Dest)
-    Write-Host "  İndiriliyor..."
-    try {
-        $wc = New-Object System.Net.WebClient
-        $wc.Headers.Add("User-Agent", "Vault-Installer")
-        if ($env:GITHUB_TOKEN) {
-            $wc.Headers.Add("Authorization", "Bearer $env:GITHUB_TOKEN")
-        }
-        $wc.DownloadFile($Url, $Dest)
-        return $true
-    } catch {
-        return $false
+# ── Install Progress Screen ────────────────────────────────────
+#
+#   ┌────────────────────────────────────────────────┐
+#   │  ⚙  v1.2.3 — windows                          │
+#   ├────────────────────────────────────────────────┤
+#   │                                                │
+#   │  ✓  [1/4]  Hedef dizin hazırlandı              │
+#   │  ▶  [2/4]  İndiriliyor...                      │
+#   │     [3/4]  Arşiv çıkartılıyor                  │
+#   │     [4/4]  PATH & Kısayol                      │
+#   │                                                │
+#   └────────────────────────────────────────────────┘
+#
+#   ████████████████████░░░░░░░░░░░░  63%
+#   26.4 MB / 41.8 MB  •  2.1 MB/s  •  ~7s kaldı
+
+$Script:StepRows  = @()   # Her adımın console satır numarası
+$Script:BarPrimed = $false # Progress bar ilk kez mi çiziliyor
+
+function Draw-InstallScreen {
+    param([string]$Title, [string[]]$Steps)
+
+    Clear-Screen
+    Draw-BoxTop
+    Draw-Title -Text $Title
+    Draw-Separator
+    Draw-Blank
+
+    $Script:StepRows  = @()
+    $Script:BarPrimed = $false
+    $n = $Steps.Length
+
+    for ($i = 0; $i -lt $n; $i++) {
+        $Script:StepRows += [Console]::CursorTop
+        # "  │  ·  [x/n]  Step text                    │"
+        $label  = "[$(($i+1))/$n]  $($Steps[$i])"
+        $padded = ("  ${DIM}·${RESET}  " + $label).PadRight($Script:IW + 9)  # +9 ANSI offset
+        "  │$padded│" | Write-Host
+    }
+
+    Draw-Blank
+    Draw-BoxBottom
+    Write-Host ""   # progress bar alanı (2 satır)
+    Write-Host ""
+}
+
+function Set-StepStatus {
+    # Adımın icon sütununu yerinde günceller (· → ▶ / ✓ / ✗)
+    param([int]$Index, [string]$Status)   # Status: pending | running | done | error
+    $savedLeft = [Console]::CursorLeft
+    $savedTop  = [Console]::CursorTop
+
+    [Console]::SetCursorPosition(5, $Script:StepRows[$Index])
+    switch ($Status) {
+        "pending" { "${DIM}·${RESET}" | Write-Host -NoNewline }
+        "running" { "${CYAN}▶${RESET}" | Write-Host -NoNewline }
+        "done"    { "${GREEN}✓${RESET}" | Write-Host -NoNewline }
+        "error"   { "${RED}✗${RESET}"  | Write-Host -NoNewline }
+    }
+
+    [Console]::SetCursorPosition($savedLeft, $savedTop)
+}
+
+function Draw-ProgressBar {
+    # Kutunun altındaki 2 satırı yerinde çizer/günceller
+    param(
+        [int]$Percent,           # -1 = belirsiz
+        [string]$ReceivedStr,
+        [string]$TotalStr,
+        [string]$SpeedStr = "",
+        [string]$EtaStr   = ""
+    )
+
+    $barWidth = 34
+
+    if ($Percent -ge 0) {
+        $filled  = [Math]::Floor($barWidth * $Percent / 100)
+        $empty   = $barWidth - $filled
+        $bar     = "${GREEN}$('█' * $filled)${DIM}$('░' * $empty)${RESET}"
+        $pctStr  = "$Percent%".PadLeft(4)
+    } else {
+        # Belirsiz: akan animasyon
+        $pos    = ([int]([DateTime]::Now.Millisecond / 80)) % $barWidth
+        $chars  = @(' ') * $barWidth
+        for ($k = 0; $k -lt 6; $k++) { $chars[($pos + $k) % $barWidth] = '█' }
+        $bar    = "${CYAN}$($chars -join '')${RESET}"
+        $pctStr = "  ···"
+    }
+
+    $line1 = "  $bar $pctStr"
+    $meta  = "  ${DIM}${ReceivedStr} / ${TotalStr}${RESET}"
+    if ($SpeedStr) { $meta += "  •  ${CYAN}${SpeedStr}${RESET}" }
+    if ($EtaStr)   { $meta += "  ${DIM}${EtaStr}${RESET}" }
+
+    if (-not $Script:BarPrimed) {
+        # İlk çizim — kutunun hemen altında olması için
+        $Script:BarPrimed = $true
+        Write-Host ($line1.PadRight(72))
+        Write-Host ($meta.PadRight(72))
+    } else {
+        # Yerinde güncelle: 2 satır yukarı çık, yeniden yaz
+        "${ESC}[2A" | Write-Host -NoNewline
+        Write-Host ($line1.PadRight(72))
+        Write-Host ($meta.PadRight(72))
     }
 }
 
-function Install-Artifact {
-    param([string]$Archive, [string]$VersionLabel)
+# ── Download (streaming, gerçek zamanlı ilerleme) ──────────────
+function Invoke-Download {
+    param([string]$Url, [string]$Dest, [int]$StepIndex)
+
+    Set-StepStatus -Index $StepIndex -Status "running"
+
+    $http = $null
+    $stream     = $null
+    $fileStream = $null
+
+    try {
+        $http = [System.Net.Http.HttpClient]::new()
+        $http.DefaultRequestHeaders.Add("User-Agent", "Vault-Installer")
+        if ($env:GITHUB_TOKEN) {
+            $http.DefaultRequestHeaders.Add("Authorization", "Bearer $env:GITHUB_TOKEN")
+        }
+
+        $response = $http.GetAsync(
+            $Url,
+            [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead
+        ).GetAwaiter().GetResult()
+
+        if (-not $response.IsSuccessStatusCode) {
+            Set-StepStatus -Index $StepIndex -Status "error"
+            return $false
+        }
+
+        $totalBytes = 0
+        try { $totalBytes = $response.Content.Headers.ContentLength } catch {}
+
+        $stream     = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+        $fileStream = [System.IO.FileStream]::new(
+            $Dest,
+            [System.IO.FileMode]::Create,
+            [System.IO.FileAccess]::Write,
+            [System.IO.FileShare]::None,
+            65536
+        )
+
+        $buffer         = New-Object byte[] 65536
+        $received       = [long]0
+        $lastSpeedBytes = [long]0
+        $lastSpeedTime  = [DateTime]::Now
+        $speed          = [double]0
+
+        while ($true) {
+            $read = $stream.Read($buffer, 0, $buffer.Length)
+            if ($read -eq 0) { break }
+            $fileStream.Write($buffer, 0, $read)
+            $received += $read
+
+            # Hız hesapla (her 500ms)
+            $now     = [DateTime]::Now
+            $elapsed = ($now - $lastSpeedTime).TotalSeconds
+            if ($elapsed -ge 0.5) {
+                $speed          = ($received - $lastSpeedBytes) / $elapsed
+                $lastSpeedBytes = $received
+                $lastSpeedTime  = $now
+            }
+
+            # Progress bar güncelle
+            $pct      = if ($totalBytes -gt 0) { [Math]::Min(100, [int]($received * 100 / $totalBytes)) } else { -1 }
+            $etaStr   = ""
+            if ($speed -gt 0 -and $totalBytes -gt 0 -and $received -lt $totalBytes) {
+                $etaStr = Format-Eta -Seconds (($totalBytes - $received) / $speed)
+            }
+            Draw-ProgressBar `
+                -Percent     $pct `
+                -ReceivedStr (Format-FileSize $received) `
+                -TotalStr    (if ($totalBytes -gt 0) { Format-FileSize $totalBytes } else { "?" }) `
+                -SpeedStr    (if ($speed -gt 0) { "$(Format-FileSize ([long]$speed))/s" } else { "" }) `
+                -EtaStr      $etaStr
+        }
+
+        # Son durum: %100
+        Draw-ProgressBar -Percent 100 `
+            -ReceivedStr (Format-FileSize $received) `
+            -TotalStr    (Format-FileSize $received) `
+            -SpeedStr    "" -EtaStr "tamamlandı"
+
+        Set-StepStatus -Index $StepIndex -Status "done"
+        return $true
+
+    } catch {
+        Set-StepStatus -Index $StepIndex -Status "error"
+        return $false
+    } finally {
+        try { if ($fileStream) { $fileStream.Close() } } catch {}
+        try { if ($stream)     { $stream.Close()     } } catch {}
+        try { if ($http)       { $http.Dispose()     } } catch {}
+    }
+}
+
+# ── Extract (arka planda, spinner ile) ────────────────────────
+function Invoke-Extract {
+    param([string]$Archive, [string]$Dest, [int]$StepIndex)
+
+    Set-StepStatus -Index $StepIndex -Status "running"
+
+    $tmpDir = Join-Path $env:TEMP "vault-extract"
+    if (Test-Path $tmpDir) { Remove-Item -Recurse -Force $tmpDir }
+
+    # Çıkartmayı arka plan job'ında başlat
+    $job = Start-Job -ScriptBlock {
+        param($src, $dst)
+        Expand-Archive -Path $src -DestinationPath $dst -Force
+    } -ArgumentList $Archive, $tmpDir
+
+    # Job çalışırken spinner göster
+    $spin = [char[]]@('⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏')
+    $si   = 0
+    $savedLeft = [Console]::CursorLeft
+    $savedTop  = [Console]::CursorTop
+
+    while ($job.State -eq "Running") {
+        [Console]::SetCursorPosition(5, $Script:StepRows[$StepIndex])
+        "${CYAN}$($spin[$si % $spin.Length])${RESET}" | Write-Host -NoNewline
+        $si++
+        Start-Sleep -Milliseconds 80
+    }
+    [Console]::SetCursorPosition($savedLeft, $savedTop)
+
+    Receive-Job $job -ErrorAction SilentlyContinue | Out-Null
+    $ok = ($job.State -eq "Completed")
+    Remove-Job $job
+
+    if (-not $ok) {
+        Set-StepStatus -Index $StepIndex -Status "error"
+        return $false
+    }
+
+    # Dosyaları hedefe taşı
+    New-Item -ItemType Directory -Path $Dest -Force | Out-Null
+    $inner = Get-ChildItem -Directory -Path $tmpDir -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($inner) {
+        Get-ChildItem -Path $inner.FullName | Move-Item -Destination $Dest -Force -ErrorAction SilentlyContinue
+    } else {
+        Get-ChildItem -Path $tmpDir | Move-Item -Destination $Dest -Force -ErrorAction SilentlyContinue
+    }
+    Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
+
+    Set-StepStatus -Index $StepIndex -Status "done"
+    return $true
+}
+
+# ── Install Orchestrator ────────────────────────────────────────
+function Install-FromArchive {
+    param([string]$Archive, [string]$VersionLabel, [string]$Platform)
 
     $baseDir = Get-InstallBase
     $dest    = Join-Path $baseDir $VersionLabel
 
-    Write-Host "  [1/4] Hedef hazırlanıyor..."
-    if (Test-Path $baseDir) {
-        Remove-Item -Recurse -Force $baseDir -ErrorAction SilentlyContinue
-    }
-    New-Item -ItemType Directory -Path $baseDir -Force | Out-Null
+    $steps = @(
+        "Hedef dizin hazırlanıyor",
+        "Dosyalar indiriliyor         ",   # trailing space — spinner için alan
+        "Arşiv çıkartılıyor          ",
+        "PATH & Kısayol güncelleniyor"
+    )
 
-    Write-Host "  [2/4] Çıkartılıyor..."
-    $tmpDir = Join-Path $env:TEMP "vault-extract"
-    if (Test-Path $tmpDir) { Remove-Item -Recurse -Force $tmpDir }
-    try {
-        Expand-Archive -Path $Archive -DestinationPath $tmpDir -Force -ErrorAction Stop
-    } catch {
+    Draw-InstallScreen -Title "  ⚙  $VersionLabel — $Platform" -Steps $steps
+
+    # ── Adım 1: Hedef dizin ──────────────────────────────
+    Set-StepStatus -Index 0 -Status "running"
+    Start-Sleep -Milliseconds 120    # gözle görülsün
+    if (Test-Path $baseDir) { Remove-Item -Recurse -Force $baseDir -ErrorAction SilentlyContinue }
+    New-Item -ItemType Directory -Path $baseDir -Force | Out-Null
+    Set-StepStatus -Index 0 -Status "done"
+
+    # ── Adım 2: İndirme — Invoke-Download içinde yönetilir ──
+    # (Archive zaten indirilmiş; bu fonksiyon sadece çıkartma yapıyor)
+    # İndirme adımını tamamlanmış işaretle
+    Set-StepStatus -Index 1 -Status "done"
+
+    # ── Adım 3: Çıkartma ─────────────────────────────────
+    $ok = Invoke-Extract -Archive $Archive -Dest $dest -StepIndex 2
+    if (-not $ok) {
         Write-Beep error
-        Write-Host "  ${RED}Çıkarma başarısız: $_${RESET}"
+        Write-Host ""
+        Write-Host "  ${RED}Çıkarma başarısız.${RESET}"
         return $false
     }
 
-    New-Item -ItemType Directory -Path $dest -Force | Out-Null
-    $inner = Get-ChildItem -Directory -Path $tmpDir -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($inner) {
-        # Wildcard'lı Join-Path yerine güvenli Get-ChildItem | Move-Item
-        Get-ChildItem -Path $inner.FullName | Move-Item -Destination $dest -Force -ErrorAction SilentlyContinue
-    } else {
-        Get-ChildItem -Path $tmpDir | Move-Item -Destination $dest -Force -ErrorAction SilentlyContinue
+    # ── Adım 4: PATH & Kısayol ────────────────────────────
+    Set-StepStatus -Index 3 -Status "running"
+
+    # PATH
+    $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if ($currentPath -notlike "*$dest*") {
+        [Environment]::SetEnvironmentVariable("Path", "$dest;$currentPath", "User")
     }
-    Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
 
-    Write-Host "  [3/4] PATH güncelleniyor..."
-    Update-UserPath -NewPath $dest
-
-    Write-Host "  [4/4] Kısayol oluşturuluyor..."
+    # Kısayol
     $exe = Get-ChildItem -Path $dest -Filter "*.exe" -ErrorAction SilentlyContinue |
            Where-Object { $_.Name -match "^[Vv]ault\.exe$" } |
            Select-Object -First 1
@@ -269,40 +498,32 @@ function Install-Artifact {
         try {
             $wshell   = New-Object -ComObject WScript.Shell
             $shortcut = $wshell.CreateShortcut("$env:USERPROFILE\Desktop\Vault.lnk")
-            $shortcut.TargetPath      = $exe.FullName
+            $shortcut.TargetPath       = $exe.FullName
             $shortcut.WorkingDirectory = $dest
             $shortcut.Save()
-            Write-Host "  Masaüstü kısayolu: $env:USERPROFILE\Desktop\Vault.lnk"
-        } catch {
-            Write-Host "  ${DIM}(Kısayol oluşturulamadı)${RESET}"
-        }
+        } catch {}
     }
 
+    Set-StepStatus -Index 3 -Status "done"
+
+    # ── Başarı kutusu ─────────────────────────────────────
     Write-Host ""
-    Write-Host "  ┌──────────────────────────────────────┐"
-    Write-Host "  │         KURULUM TAMAMLANDI           │"
-    Write-Host "  └──────────────────────────────────────┘"
+    Write-Host ""
     Write-Beep success
-    Write-Host ""
-    Write-Host "  Konum: $dest"
-    Write-Host "  Kullanım: vault run --desktop"
+    Write-Host "  ┌──────────────────────────────────────────────┐"
+    Write-Host "  │        ${GREEN}KURULUM BAŞARIYLA TAMAMLANDI${RESET}          │"
+    Write-Host "  ├──────────────────────────────────────────────┤"
+    Write-Host "  │  Konum  : $($dest.PadRight(35))│"
+    Write-Host "  │  Kullanım: vault run --desktop               │"
+    if ($exe) {
+    Write-Host "  │  Kısayol: Masaüstü › Vault.lnk              │"
+    }
+    Write-Host "  └──────────────────────────────────────────────┘"
     Write-Host ""
     return $true
 }
 
-function Update-UserPath {
-    param([string]$NewPath)
-    $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    if ($currentPath -notlike "*$NewPath*") {
-        [Environment]::SetEnvironmentVariable("Path", "$NewPath;$currentPath", "User")
-        Write-Host "  PATH'e eklendi: $NewPath"
-        Write-Host "  (Değişiklik yeni terminal pencerelerinde geçerli olacaktır.)"
-    } else {
-        Write-Host "  $NewPath zaten PATH'te mevcut."
-    }
-}
-
-# ── Flow Screens ────────────────────────────────────────────────
+# ── Start-Install (akış başlatıcı) ────────────────────────────
 function Start-Install {
     param(
         [string]$SourceType,
@@ -312,69 +533,116 @@ function Start-Install {
     )
 
     $archive = Join-Path $env:TEMP "vault-install.zip"
-
-    Write-Host ""
-    Draw-BoxTop
-    # Düzeltildi: PadRight önce uygulanır, sonra ANSI eklenir
-    $titleText = ("  $VersionLabel Kuruluyor...").PadRight($Script:IW)
-    "  │${BOLD}${titleText}${RESET}│" | Write-Host
-    Draw-BoxBottom
-    Write-Host ""
-
-    $url = if ($SourceType -eq "release") {
+    $url     = if ($SourceType -eq "release") {
         "https://github.com/$($Script:REPO)/releases/download/$VersionLabel/${Platform}-build-artifact.zip"
     } else {
         "$($Script:API_BASE)/actions/artifacts/$ArtifactId/zip"
     }
 
-    $ok = Invoke-Download -Url $url -Dest $archive
+    # İndirme ekranını hazırla
+    $dlSteps = @(
+        "Bağlantı kuruluyor  ",
+        "Dosyalar indiriliyor",
+        "Arşiv çıkartılıyor  ",
+        "PATH & Kısayol      "
+    )
+    Draw-InstallScreen -Title "  ⚙  $VersionLabel — $Platform" -Steps $dlSteps
+    Set-StepStatus -Index 0 -Status "done"   # bağlantı anında
+
+    # İndir
+    $ok = Invoke-Download -Url $url -Dest $archive -StepIndex 1
     if (-not $ok) {
         Write-Beep error
-        Write-Host "  ${RED}İndirme başarısız.${RESET}"
-        Remove-Item $archive -ErrorAction SilentlyContinue
-        Start-Sleep -Milliseconds 2000
+        Write-Host ""
+        Write-Host "  ${RED}İndirme başarısız. URL veya token'ı kontrol edin.${RESET}"
+        Start-Sleep -Milliseconds 2500
         return
     }
 
     if (-not (Test-Path $archive) -or (Get-Item $archive).Length -eq 0) {
         Write-Beep error
+        Write-Host ""
         Write-Host "  ${RED}İndirilen dosya boş veya geçersiz.${RESET}"
         Remove-Item $archive -ErrorAction SilentlyContinue
-        Start-Sleep -Milliseconds 2000
+        Start-Sleep -Milliseconds 2500
         return
     }
 
-    Install-Artifact -Archive $archive -VersionLabel $VersionLabel
-    Remove-Item $archive -ErrorAction SilentlyContinue
+    # Kurulum (çıkart + PATH + kısayol)
+    $baseDir = Get-InstallBase
+    $dest    = Join-Path $baseDir $VersionLabel
 
+    Set-StepStatus -Index 0 -Status "done"  # bağlantı
+    # adım 1 (indirme) zaten done — şimdi adım 2: çıkartma
+
+    # Hedef hazırlık
+    if (Test-Path $baseDir) { Remove-Item -Recurse -Force $baseDir -ErrorAction SilentlyContinue }
+    New-Item -ItemType Directory -Path $baseDir -Force | Out-Null
+
+    # Çıkart
+    $ok = Invoke-Extract -Archive $archive -Dest $dest -StepIndex 2
+    Remove-Item $archive -ErrorAction SilentlyContinue
+    if (-not $ok) {
+        Write-Beep error
+        Write-Host ""
+        Write-Host "  ${RED}Çıkarma başarısız.${RESET}"
+        Start-Sleep -Milliseconds 2500
+        return
+    }
+
+    # PATH & Kısayol
+    Set-StepStatus -Index 3 -Status "running"
+    $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if ($currentPath -notlike "*$dest*") {
+        [Environment]::SetEnvironmentVariable("Path", "$dest;$currentPath", "User")
+    }
+    $exe = Get-ChildItem -Path $dest -Filter "*.exe" -ErrorAction SilentlyContinue |
+           Where-Object { $_.Name -match "^[Vv]ault\.exe$" } | Select-Object -First 1
+    if ($exe) {
+        try {
+            $wshell   = New-Object -ComObject WScript.Shell
+            $shortcut = $wshell.CreateShortcut("$env:USERPROFILE\Desktop\Vault.lnk")
+            $shortcut.TargetPath       = $exe.FullName
+            $shortcut.WorkingDirectory = $dest
+            $shortcut.Save()
+        } catch {}
+    }
+    Set-StepStatus -Index 3 -Status "done"
+
+    # Başarı
+    Write-Host ""
+    Write-Host ""
+    Write-Beep success
+    Write-Host "  ┌──────────────────────────────────────────────┐"
+    Write-Host "  │        ${GREEN}KURULUM BAŞARIYLA TAMAMLANDI${RESET}          │"
+    Write-Host "  ├──────────────────────────────────────────────┤"
+    Write-Host "  │  Konum   : $($dest.PadRight(34))│"
+    Write-Host "  │  Kullanım: vault run --desktop               │"
+    if ($exe) {
+    Write-Host "  │  Kısayol : Masaüstü › Vault.lnk             │"
+    }
+    Write-Host "  └──────────────────────────────────────────────┘"
     Write-Host ""
     Write-Host "  Ana menüye dönmek için bir tuşa basın..."
     $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") | Out-Null
 }
 
+# ── Flow Screens ────────────────────────────────────────────────
 function Show-ReleaseFlow {
-    Write-Host ""
-    Write-Host "  Sürümler alınıyor..."
+    Write-Host ""; Write-Host "  Sürümler alınıyor..."
     $releases = @(Get-Releases)
     if ($releases.Count -eq 0) {
         Write-Beep error
         Write-Host "  ${RED}Henüz bir sürüm yayınlanmamış.${RESET}"
-        Start-Sleep -Milliseconds 1500
-        return
+        Start-Sleep -Milliseconds 1500; return
     }
-
-    $display = @()
-    $tags    = @()
-    foreach ($r in $releases) {
-        $display += "$($r.Tag)  •  $($r.Date)"
-        $tags    += $r.Tag
-    }
+    $display = @(); $tags = @()
+    foreach ($r in $releases) { $display += "$($r.Tag)  •  $($r.Date)"; $tags += $r.Tag }
 
     $selected = 0
     while ($true) {
         Render-Menu -Items $display -Selected $selected `
             -Title "📦  Kararlı Sürüm Seçin" -Footer "↑/↓: Gezin  Enter: Seç  Esc: Geri"
-
         switch (Read-KeyPress) {
             "up"    { if ($selected -gt 0) { $selected-- } }
             "down"  { if ($selected -lt ($display.Length - 1)) { $selected++ } }
@@ -386,11 +654,8 @@ function Show-ReleaseFlow {
 
 function Show-PlatformFlow {
     param([string]$Tag)
-
-    $platforms   = @("windows","linux","macos","apk","aab")
-    $display     = @()
-    $detectedIdx = 0
-
+    $platforms = @("windows","linux","macos","apk","aab")
+    $display   = @(); $detectedIdx = 0
     for ($i = 0; $i -lt $platforms.Length; $i++) {
         switch ($platforms[$i]) {
             "windows" { $display += "windows (otomatik tespit)"; $detectedIdx = $i }
@@ -399,19 +664,14 @@ function Show-PlatformFlow {
             default   { $display += $platforms[$i] }
         }
     }
-
     $selected = $detectedIdx
     while ($true) {
         Render-Menu -Items $display -Selected $selected `
             -Title "Platform Seçin — $Tag" -Footer "↑/↓: Gezin  Enter: Seç  Esc: Geri"
-
         switch (Read-KeyPress) {
             "up"    { if ($selected -gt 0) { $selected-- } }
             "down"  { if ($selected -lt ($display.Length - 1)) { $selected++ } }
-            "enter" {
-                Start-Install -SourceType "release" -VersionLabel $Tag -Platform $platforms[$selected]
-                return
-            }
+            "enter" { Start-Install -SourceType "release" -VersionLabel $Tag -Platform $platforms[$selected]; return }
             { $_ -in "esc","q" } { return }
         }
     }
@@ -419,43 +679,30 @@ function Show-PlatformFlow {
 
 function Show-CommitFlow {
     if (-not $env:GITHUB_TOKEN) {
-        Write-Host ""
-        Write-Host "  Workflow artifact'leri için GitHub Token gerekli."
-        Write-Host "  (https://github.com/settings/tokens adresinden oluşturabilirsiniz)"
-        Write-Host ""
-        # SecureString olarak al, düz metin terminalde görünmez
+        Write-Host ""; Write-Host "  Workflow artifact'leri için GitHub Token gerekli."
+        Write-Host "  (https://github.com/settings/tokens adresinden oluşturabilirsiniz)"; Write-Host ""
         $secure = Read-Host "  GitHub Token" -AsSecureString
         $bstr   = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
         $token  = [Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
         [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
         if ([string]::IsNullOrEmpty($token)) {
-            Write-Beep error
-            Write-Host "  ${RED}Token gerekli. Ana menüye dönülüyor.${RESET}"
-            Start-Sleep -Milliseconds 1500
-            return
+            Write-Beep error; Write-Host "  ${RED}Token gerekli.${RESET}"; Start-Sleep -Milliseconds 1500; return
         }
         $env:GITHUB_TOKEN = $token
     }
 
-    Write-Host ""
-    Write-Host "  Workflow run'ları alınıyor..."
+    Write-Host ""; Write-Host "  Workflow run'ları alınıyor..."
     $runs = @(Get-WorkflowRuns)
     if ($runs.Count -eq 0) {
-        Write-Beep error
-        Write-Host "  ${RED}Hiç test yapısı bulunamadı.${RESET}"
-        Start-Sleep -Milliseconds 1500
-        return
+        Write-Beep error; Write-Host "  ${RED}Hiç test yapısı bulunamadı.${RESET}"; Start-Sleep -Milliseconds 1500; return
     }
 
-    $display = @()
-    $data    = @()   # Her run için tek kayıt — display'deki çift satırla eşleşme için [Math]::Floor kullanılır
+    $display = @(); $data = @()
     foreach ($r in $runs) {
-        $maxMsg  = $Script:IW - 4 - 9   # SHA(7) + 2 boşluk
+        $maxMsg  = $Script:IW - 4 - 9
         $msgDisp = if ($r.Message.Length -gt $maxMsg) { $r.Message.Substring(0, $maxMsg - 3) + "..." } else { $r.Message }
-
-        $maxBr  = $Script:IW - 4 - 23  # "   branch: "(11) + date(10) + boşluk(2)
-        $brDisp = if ($r.Branch.Length -gt $maxBr) { $r.Branch.Substring(0, $maxBr - 3) + "..." } else { $r.Branch }
-
+        $maxBr   = $Script:IW - 4 - 23
+        $brDisp  = if ($r.Branch.Length -gt $maxBr)  { $r.Branch.Substring(0, $maxBr - 3)   + "..." } else { $r.Branch }
         $display += "$($r.Sha)  $msgDisp"
         $display += "   branch: $brDisp  $($r.Date)"
         $data    += [PSCustomObject]@{ RunId = $r.RunId; Sha = $r.Sha }
@@ -465,15 +712,12 @@ function Show-CommitFlow {
     while ($true) {
         Render-Menu -Items $display -Selected $selected `
             -Title "🔧  Test Sürümü Seçin" -Footer "↑/↓: Gezin  Enter: Seç  Esc: Geri"
-
         switch (Read-KeyPress) {
             "up"    { if ($selected -gt 0) { $selected-- } }
             "down"  { if ($selected -lt ($display.Length - 1)) { $selected++ } }
             "enter" {
-                # Her run 2 satır kaplar; Math::Floor ile doğru data index'i bulunur
-                $dataIdx = [Math]::Floor($selected / 2)
-                Show-ArtifactFlow -RunId $data[$dataIdx].RunId -Sha $data[$dataIdx].Sha
-                return
+                $di = [Math]::Floor($selected / 2)
+                Show-ArtifactFlow -RunId $data[$di].RunId -Sha $data[$di].Sha; return
             }
             { $_ -in "esc","q" } { return }
         }
@@ -482,31 +726,22 @@ function Show-CommitFlow {
 
 function Show-ArtifactFlow {
     param([long]$RunId, [string]$Sha)
-
-    Write-Host ""
-    Write-Host "  Yapıtlar alınıyor..."
+    Write-Host ""; Write-Host "  Yapıtlar alınıyor..."
     $artifacts = @(Get-RunArtifacts -RunId $RunId)
     if ($artifacts.Count -eq 0) {
-        Write-Host "  ${RED}Seçilen commit için yapı bulunamadı.${RESET}"
-        Start-Sleep -Milliseconds 1500
-        return
+        Write-Host "  ${RED}Seçilen commit için yapı bulunamadı.${RESET}"; Start-Sleep -Milliseconds 1500; return
     }
-
-    $display  = @()
-    $artNames = @()
-    $artIds   = @()
+    $display = @(); $artNames = @(); $artIds = @()
     foreach ($a in $artifacts) {
-        $displayName = $a.Name -replace "-build-artifact$", ""
-        $display  += "$displayName ($(Format-FileSize -Bytes $a.Size))"
+        $dn = $a.Name -replace "-build-artifact$", ""
+        $display  += "$dn ($(Format-FileSize -Bytes $a.Size))"
         $artNames += $a.Name
         $artIds   += $a.Id
     }
-
     $selected = 0
     while ($true) {
         Render-Menu -Items $display -Selected $selected `
             -Title "Yapı Seçin — $Sha" -Footer "↑/↓: Gezin  Enter: Seç  Esc: Geri"
-
         switch (Read-KeyPress) {
             "up"    { if ($selected -gt 0) { $selected-- } }
             "down"  { if ($selected -lt ($display.Length - 1)) { $selected++ } }
@@ -523,18 +758,11 @@ function Show-ArtifactFlow {
 
 # ── Main Menu ──────────────────────────────────────────────────
 function Show-MainMenu {
-    $options  = @(
-        "📦  Kararlı sürüm kur"
-        "🔧  Test sürümü kur"
-        ""
-        "❌  Çıkış"
-    )
+    $options  = @("📦  Kararlı sürüm kur","🔧  Test sürümü kur","","❌  Çıkış")
     $selected = 0
-
     while ($true) {
         Render-Menu -Items $options -Selected $selected `
             -Title "VAULT KURULUM — yaso09/vault" -Footer "↑/↓: Gezin  Enter: Seç  Q: Çıkış"
-
         switch (Read-KeyPress) {
             "up"   { if ($selected -gt 0) { $selected-- } }
             "down" { if ($selected -lt ($options.Length - 1)) { $selected++ } }
@@ -547,18 +775,10 @@ function Show-MainMenu {
             }
             { $_ -in "q","esc" } { Clear-Screen; Show-Cursor; exit 0 }
         }
-
-        # Boş satırları atla
-        while ($selected -lt $options.Length -and [string]::IsNullOrEmpty($options[$selected])) {
-            $selected++
-        }
+        while ($selected -lt $options.Length -and [string]::IsNullOrEmpty($options[$selected])) { $selected++ }
     }
 }
 
 # ── Entry Point ─────────────────────────────────────────────────
 Hide-Cursor
-try {
-    Show-MainMenu
-} finally {
-    Show-Cursor
-}
+try { Show-MainMenu } finally { Show-Cursor }
