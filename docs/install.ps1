@@ -41,8 +41,6 @@ $YELLOW = "${ESC}[33m"
 $RED    = "${ESC}[31m"
 
 $Script:IW = 48   # ││ arasındaki iç genişlik
-$Script:GameScript = Join-Path $PSScriptRoot "space-invaders.ps1"
-$Script:Cancelled = $false
 
 # ── Beep ────────────────────────────────────────────────────────
 function Write-Beep {
@@ -375,21 +373,6 @@ function Invoke-Download {
                 -TotalStr    (if ($totalBytes -gt 0) { Format-FileSize $totalBytes } else { "?" }) `
                 -SpeedStr    (if ($speed -gt 0) { "$(Format-FileSize ([long]$speed))/s" } else { "" }) `
                 -EtaStr      $etaStr
-
-            if ([Console]::KeyAvailable) {
-                $k = [Console]::ReadKey($true)
-                if ($k.Key -eq "SpaceBar") {
-                    if ($Script:GameScript -and (Test-Path $Script:GameScript)) {
-                        Set-StepStatus -Index $StepIndex -Status "running"
-                        Draw-ProgressBar -Percent $pct -ReceivedStr (Format-FileSize $received) -TotalStr (if ($totalBytes -gt 0) { Format-FileSize $totalBytes } else { "?" }) -SpeedStr "" -EtaStr "⏸  Space Invaders..."
-                        & $Script:GameScript
-                    }
-                }
-                if ($k.Key -eq "Q") {
-                    $Script:Cancelled = $true
-                    return $false
-                }
-            }
         }
 
         # Son durum: %100
@@ -569,15 +552,7 @@ function Start-Install {
     Set-StepStatus -Index 0 -Status "done"   # bağlantı anında
 
     # İndir
-    $Script:Cancelled = $false
     $ok = Invoke-Download -Url $url -Dest $archive -StepIndex 1
-    if ($Script:Cancelled) {
-        Write-Host ""
-        Write-Host "  ${RED}İndirme iptal edildi.${RESET}"
-        Remove-Item $archive -ErrorAction SilentlyContinue
-        Start-Sleep -Milliseconds 1500
-        return
-    }
     if (-not $ok) {
         Write-Beep error
         Write-Host ""
