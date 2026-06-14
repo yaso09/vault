@@ -9,7 +9,7 @@ dependencies = [
     "flet>=0.85.2",
     "flet-webview>=0.85.2",
     "pydantic",
-    "typer>=0.15",
+    "typer>=0.26.7",
     "rich>=13.0",
     "uvicorn",
     "wasmtime>=45.0.0",
