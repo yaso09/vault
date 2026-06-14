@@ -44,7 +44,7 @@ pydantic==2.13.4
     #   fastapi
 pydantic-core==2.46.4
     # via pydantic
-pytubefix==7.4.0
+pytubefix==10.9.0
     # via vault (pyproject.toml)
 repath==0.9.0
     # via flet
