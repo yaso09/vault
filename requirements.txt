@@ -42,7 +42,7 @@ pydantic==2.13.4
     # via
     #   vault (pyproject.toml)
     #   fastapi
-pydantic-core==2.46.4
+pydantic-core==2.47.0
     # via pydantic
 pytubefix==7.4.0
     # via vault (pyproject.toml)
