@@ -13,7 +13,7 @@ dependencies = [
     "rich>=13.0",
     "uvicorn",
     "wasmtime>=45.0.0",
-    "yt-dlp>=2026.3.17",
+    "yt-dlp>=2026.7.4",
 ]
 
 # ── Flet Build Konfigürasyonu ────────────────────────────────────
